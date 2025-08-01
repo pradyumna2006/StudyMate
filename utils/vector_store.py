@@ -5,6 +5,7 @@ from typing import List, Dict, Any
 import pickle
 import os
 import json
+import re
 
 class VectorStore:
     """Manages vector storage and similarity search for documents"""
@@ -37,30 +38,105 @@ class VectorStore:
         faiss.normalize_L2(embeddings)
         return embeddings
     
-    def add_documents(self, documents: List[Dict], source_name: str = "Unknown"):
-        """Add documents to the vector store"""
+    def add_documents(self, documents: List[str], metadata: List[Dict] = None):
+        """Add documents to the vector store with enhanced processing"""
         if not documents:
             return
         
-        # Extract text content from documents
-        texts = [doc['content'] for doc in documents]
+        # Enhanced preprocessing for better embeddings
+        processed_documents = []
+        processed_metadata = []
         
-        # Generate embeddings
-        embeddings = self.embed_texts(texts)
+        for i, doc in enumerate(documents):
+            # Enhance document content for better similarity search
+            enhanced_doc = self._enhance_document_content(doc)
+            processed_documents.append(enhanced_doc)
+            
+            # Enhanced metadata with content analysis
+            doc_metadata = metadata[i] if metadata and i < len(metadata) else {}
+            enhanced_metadata = self._enhance_metadata(doc, doc_metadata)
+            processed_metadata.append(enhanced_metadata)
+        
+        # Generate embeddings for processed documents
+        embeddings = self.embed_texts(processed_documents)
         
         # Add to FAISS index
-        self.index.add(embeddings.astype('float32'))
+        if self.index.ntotal == 0:
+            self.index.add(embeddings.astype('float32'))
+        else:
+            self.index.add(embeddings.astype('float32'))
         
         # Store documents and metadata
-        for i, doc in enumerate(documents):
-            self.documents.append(doc['content'])
-            metadata = doc.get('metadata', {})
-            metadata['source'] = source_name
-            metadata['doc_id'] = len(self.document_metadata)
-            self.document_metadata.append(metadata)
+        self.documents.extend(processed_documents)
+        self.document_metadata.extend(processed_metadata)
         
         # Save the updated index
         self.save_index()
+    
+    def _enhance_document_content(self, document: str) -> str:
+        """Enhance document content for better embeddings and search"""
+        # Extract key phrases and concepts
+        key_phrases = self._extract_key_phrases(document)
+        
+        # Add semantic markers for better understanding
+        enhanced_content = document
+        
+        # Add content type indicators
+        if any(keyword in document.lower() for keyword in ['define', 'definition', 'is defined as']):
+            enhanced_content = f"[DEFINITION] {enhanced_content}"
+        elif any(keyword in document.lower() for keyword in ['example', 'for instance', 'such as']):
+            enhanced_content = f"[EXAMPLE] {enhanced_content}"
+        elif any(keyword in document.lower() for keyword in ['process', 'steps', 'procedure']):
+            enhanced_content = f"[PROCESS] {enhanced_content}"
+        
+        # Add key phrases as searchable terms
+        if key_phrases:
+            enhanced_content += f"\n[KEY_TERMS] {', '.join(key_phrases[:10])}"
+        
+        return enhanced_content
+    
+    def _enhance_metadata(self, document: str, existing_metadata: Dict) -> Dict:
+        """Enhance metadata with content analysis"""
+        enhanced_metadata = existing_metadata.copy()
+        
+        # Add content analysis
+        enhanced_metadata.update({
+            'word_count': len(document.split()),
+            'sentence_count': len([s for s in document.split('.') if s.strip()]),
+            'has_definition': any(keyword in document.lower() for keyword in ['define', 'definition']),
+            'has_example': any(keyword in document.lower() for keyword in ['example', 'for instance']),
+            'has_process': any(keyword in document.lower() for keyword in ['process', 'steps']),
+            'has_list': bool(re.search(r'\d+\.\s|\•\s|\*\s', document)),
+            'content_density': len(document.split()) / max(len(document), 1),  # Words per character
+            'key_phrases': self._extract_key_phrases(document)
+        })
+        
+        return enhanced_metadata
+    
+    def _extract_key_phrases(self, text: str) -> List[str]:
+        """Extract key phrases from text for better searchability"""
+        # Simple key phrase extraction
+        # Look for capitalized terms, technical terms, and important phrases
+        phrases = []
+        
+        # Capitalized multi-word terms
+        cap_phrases = re.findall(r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b', text)
+        phrases.extend(cap_phrases)
+        
+        # Technical terms (words with underscores or camelCase)
+        tech_terms = re.findall(r'\b[a-z]+(?:_[a-z]+)+\b|\b[a-z]+[A-Z][a-z]+\b', text)
+        phrases.extend(tech_terms)
+        
+        # Important single words (longer than 5 characters, not common words)
+        important_words = re.findall(r'\b[a-zA-Z]{6,}\b', text)
+        common_words = {'system', 'process', 'example', 'definition', 'important', 'different', 'various', 'general'}
+        important_words = [word for word in important_words if word.lower() not in common_words]
+        phrases.extend(important_words[:5])  # Limit to 5 important words
+        
+        # Clean and deduplicate
+        unique_phrases = list(set([phrase.strip() for phrase in phrases if len(phrase.strip()) > 3]))
+        
+        return unique_phrases[:15]  # Return top 15 phrases
     
     def similarity_search(self, query: str, k: int = 5, threshold: float = 0.3) -> List[Dict]:
         """Search for similar documents"""
@@ -185,7 +261,8 @@ class VectorStore:
                 json.dump(self.document_metadata, f, indent=2, default=str)
             
         except Exception as e:
-            print(f"Error saving index: {str(e)}")
+            # Silently handle save errors - index will be rebuilt if needed
+            pass
     
     def load_index(self):
         """Load the vector index and metadata from disk"""
@@ -206,15 +283,60 @@ class VectorStore:
                 with open(metadata_path, "r") as f:
                     self.document_metadata = json.load(f)
                 
-                print(f"Loaded index with {len(self.documents)} documents")
+                # Index loaded successfully - documents available
             
         except Exception as e:
-            print(f"Error loading index: {str(e)}")
-            # Initialize empty index on error
+            # Initialize empty index on error - silently handle
             self.index = faiss.IndexFlatIP(self.dimension)
             self.documents = []
             self.document_metadata = []
     
+    def search_similar(self, query: str, k: int = 5, threshold: float = 0.3) -> List[Dict]:
+        """Search for similar documents and return as dictionaries"""
+        if self.index.ntotal == 0:
+            return []
+        
+        # Generate query embedding
+        query_embedding = self.embed_text(query)
+        
+        # Search in FAISS index
+        scores, indices = self.index.search(
+            query_embedding.reshape(1, -1).astype('float32'), 
+            min(k, self.index.ntotal)
+        )
+        
+        # Filter by threshold and prepare results
+        results = []
+        for score, idx in zip(scores[0], indices[0]):
+            if score >= threshold and idx < len(self.documents):
+                metadata = self.document_metadata[idx].copy()
+                metadata['similarity_score'] = float(score)
+                
+                result = {
+                    'content': self.documents[idx],
+                    'metadata': metadata,
+                    'similarity_score': float(score),
+                    'source': metadata.get('source', 'Unknown'),
+                    'page': metadata.get('page', 'Unknown'),
+                    'chunk_id': metadata.get('chunk_id', idx)
+                }
+                results.append(result)
+        
+        return results
+    
+    def get_all_chunks(self) -> List[Dict]:
+        """Get all document chunks"""
+        all_chunks = []
+        for i, doc in enumerate(self.documents):
+            metadata = self.document_metadata[i] if i < len(self.document_metadata) else {}
+            all_chunks.append({
+                'content': doc,
+                'source': metadata.get('source', 'Unknown'),
+                'chunk_id': metadata.get('chunk_id', i),
+                'page': metadata.get('page', 'Unknown')
+            })
+        return all_chunks
+
     def clear_index(self):
         """Clear all documents from the index"""
         self.index = faiss.IndexFlatIP(self.dimension)
@@ -227,7 +349,8 @@ class VectorStore:
             if os.path.exists(self.index_path):
                 shutil.rmtree(self.index_path)
         except Exception as e:
-            print(f"Error clearing saved index: {str(e)}")
+            # Silently handle clear errors
+            pass
 
 
 class Document:

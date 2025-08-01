@@ -4,17 +4,13 @@ import tempfile
 import json
 from datetime import datetime
 import plotly.express as px
-import plotly.graph_objects as go
-from PIL import Image
-import pandas as pd
-import time
 from typing import Dict, List
 
 # Import custom modules
 from utils.pdf_processor import PDFProcessor
 from utils.vector_store import VectorStore
 from utils.ai_assistant import AIAssistant
-# from utils.speech_handler import SpeechHandler  # Commented out due to missing speech-recognition
+from utils.speech_handler import SpeechHandler
 
 # Page configuration
 st.set_page_config(
@@ -24,10 +20,10 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Custom CSS for clean, modern UI exactly like the image
+# Custom CSS for study room interface matching the provided image
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Poppins:wght@300;400;500;600;700;800;900&display=swap');
     
     /* Hide Streamlit branding and default elements */
     .stDeployButton {display: none;}
@@ -36,200 +32,416 @@ st.markdown("""
     header {visibility: hidden;}
     .stSidebar {display: none;}
     
-    /* Main app styling */
-    .stApp {
-        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    /* Animated StudyMate Title */
+    .studymate-title {
+        text-align: center;
+        margin: 2rem 0 3rem 0;
+        position: relative;
+        z-index: 10;
     }
     
-    /* Main interface container */
+    .studymate-main-title {
+        font-family: 'Poppins', sans-serif;
+        font-size: 4rem;
+        font-weight: 800;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+        background-size: 300% 300%;
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        animation: gradientShift 4s ease-in-out infinite;
+        text-shadow: 0 8px 32px rgba(102, 126, 234, 0.3);
+        letter-spacing: -2px;
+        margin: 0;
+        position: relative;
+    }
+    
+    .studymate-subtitle {
+        font-family: 'Inter', sans-serif;
+        font-size: 1.2rem;
+        font-weight: 500;
+        color: #64748b;
+        margin: 0.5rem 0 0 0;
+        opacity: 0;
+        animation: fadeInUp 1s ease-out 0.5s both;
+    }
+    
+    .studymate-icon {
+        display: inline-block;
+        font-size: 4rem;
+        margin-right: 1rem;
+        animation: bounce 2s infinite;
+        filter: drop-shadow(0 4px 12px rgba(102, 126, 234, 0.3));
+    }
+    
+    /* Animated background gradients */
+    @keyframes gradientShift {
+        0%, 100% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+    }
+    
+    @keyframes bounce {
+        0%, 20%, 50%, 80%, 100% { transform: translateY(0); }
+        40% { transform: translateY(-10px); }
+        60% { transform: translateY(-5px); }
+    }
+    
+    @keyframes pulse {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.05); }
+    }
+    
+    @keyframes slideInFromLeft {
+        0% {
+            opacity: 0;
+            transform: translateX(-50px);
+        }
+        100% {
+            opacity: 1;
+            transform: translateX(0);
+        }
+    }
+    
+    @keyframes floatUpDown {
+        0%, 100% { transform: translateY(0px); }
+        50% { transform: translateY(-8px); }
+    }
+    
+    /* Main app styling with enhanced animations */
+    .stApp {
+        background: linear-gradient(
+            135deg, 
+            rgba(139, 115, 85, 0.3) 0%,
+            rgba(160, 140, 115, 0.4) 25%,
+            rgba(180, 165, 140, 0.3) 50%,
+            rgba(200, 185, 165, 0.4) 75%,
+            rgba(220, 205, 185, 0.3) 100%
+        ),
+        url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800"><defs><radialGradient id="window" cx="0.2" cy="0.3"><stop offset="0%" stop-color="%23fff5e6"/><stop offset="100%" stop-color="%23f4e4d1"/></radialGradient></defs><rect width="1200" height="800" fill="%23d4c4a8"/><rect x="0" y="100" width="300" height="500" fill="url(%23window)" opacity="0.8"/><rect x="50" y="150" width="200" height="50" fill="%23e8dcc0" opacity="0.6"/><rect x="800" y="400" width="300" height="100" fill="%238b6f47" opacity="0.3"/><circle cx="100" cy="600" r="30" fill="%237d5a2b" opacity="0.4"/><rect x="900" y="300" width="200" height="300" fill="%23a0895a" opacity="0.2"/></svg>');
+        background-size: cover;
+        background-attachment: fixed;
+        background-position: center;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        min-height: 100vh;
+        animation: backgroundGlow 8s ease-in-out infinite;
+    }
+    
+    @keyframes backgroundGlow {
+        0%, 100% { filter: brightness(1) contrast(1); }
+        50% { filter: brightness(1.05) contrast(1.1); }
+    }
+    
+    /* Enhanced main interface container */
     .main-interface {
         max-width: 500px;
         margin: 2rem auto;
-        padding: 2rem;
-        background: white;
-        border-radius: 20px;
-        box-shadow: 0 10px 50px rgba(0,0,0,0.1);
-        backdrop-filter: blur(10px);
+        padding: 2.5rem;
+        background: rgba(255, 255, 255, 0.95);
+        border-radius: 24px;
+        box-shadow: 
+            0 20px 60px rgba(139, 115, 85, 0.2),
+            0 8px 25px rgba(0, 0, 0, 0.1),
+            inset 0 1px 0 rgba(255, 255, 255, 0.6);
+        backdrop-filter: blur(20px);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        position: relative;
+        animation: slideInFromLeft 0.8s ease-out, floatUpDown 6s ease-in-out infinite;
+        transition: all 0.3s ease;
+    }
+    
+    .main-interface:hover {
+        transform: translateY(-5px);
+        box-shadow: 
+            0 25px 80px rgba(139, 115, 85, 0.25),
+            0 12px 35px rgba(0, 0, 0, 0.15),
+            inset 0 1px 0 rgba(255, 255, 255, 0.7);
+    }
+    
+    /* Animated decorative elements */
+    .main-interface::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: linear-gradient(
+            145deg, 
+            rgba(248, 235, 220, 0.1) 0%,
+            rgba(245, 230, 210, 0.05) 100%
+        );
+        border-radius: 24px;
+        pointer-events: none;
+        animation: pulse 4s ease-in-out infinite;
     }
     
     /* Container styling */
     .main .block-container {
-        padding: 1rem;
-        max-width: 600px;
-        margin: 0 auto;
+        padding: 0;
+        max-width: 100%;
+        margin: 0;
     }
     
-    /* Upload section */
+    /* Enhanced upload section with animations */
     .upload-section {
         text-align: center;
         margin-bottom: 2rem;
+        position: relative;
+        z-index: 1;
+        animation: fadeInUp 1s ease-out 0.3s both;
     }
     
-    /* Question section */
+    /* Enhanced question section */
     .question-section {
         margin-bottom: 2rem;
         position: relative;
+        z-index: 1;
+        animation: fadeInUp 1s ease-out 0.6s both;
     }
     
-    /* Answer section */
+    /* Enhanced answer section with animations */
     .answer-section {
-        background: #f8fafc;
-        border-radius: 15px;
+        background: rgba(255, 255, 255, 0.95);
+        border-radius: 16px;
         padding: 2rem;
         margin-bottom: 2rem;
-        text-align: center;
+        text-align: left;
         min-height: 120px;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
+        border: 1px solid rgba(200, 200, 200, 0.2);
+        box-shadow: 
+            0 4px 20px rgba(0, 0, 0, 0.08),
+            0 2px 8px rgba(0, 0, 0, 0.04);
+        position: relative;
+        z-index: 1;
+        backdrop-filter: blur(10px);
+        animation: fadeInUp 1s ease-out 0.9s both;
+        transition: all 0.3s ease;
     }
     
-    .answer-content h3 {
-        color: #1a202c;
-        font-size: 1.5rem;
+    .answer-section:hover {
+        transform: translateY(-2px);
+        box-shadow: 
+            0 8px 30px rgba(0, 0, 0, 0.12),
+            0 4px 12px rgba(0, 0, 0, 0.06);
+    }
+    
+    .answer-section h3 {
+        color: #2c3e50;
+        font-size: 1.4rem;
         font-weight: 600;
-        margin-bottom: 0.5rem;
+        margin-bottom: 0.8rem;
+        font-family: 'Inter', sans-serif;
     }
     
-    .answer-content p {
-        color: #64748b;
+    .answer-section p {
+        color: #34495e;
         font-size: 1rem;
         line-height: 1.6;
         margin: 0;
     }
     
-    /* File uploader styling */
+    /* Additional styling for content within answer section */
+    .answer-section .stMarkdown,
+    .answer-section div,
+    .answer-section pre,
+    .answer-section code {
+        background: transparent !important;
+        color: #2c3e50 !important;
+    }
+    
+    .answer-section ul,
+    .answer-section ol {
+        color: #34495e;
+        padding-left: 1.5rem;
+    }
+    
+    .answer-section li {
+        margin-bottom: 0.5rem;
+        line-height: 1.6;
+    }
+    
+    /* Enhanced file uploader with animations */
     .stFileUploader > div {
-        border: 2px dashed #4f46e5;
-        border-radius: 15px;
-        background: rgba(79, 70, 229, 0.05);
+        border: 2px dashed rgba(66, 133, 244, 0.3);
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.7);
         padding: 1.5rem;
         text-align: center;
         transition: all 0.3s ease;
+        backdrop-filter: blur(10px);
+        animation: pulse 3s ease-in-out infinite;
     }
     
     .stFileUploader > div:hover {
-        border-color: #4338ca;
-        background: rgba(79, 70, 229, 0.1);
-        transform: translateY(-2px);
+        border-color: #4285f4;
+        background: rgba(255, 255, 255, 0.9);
+        transform: translateY(-2px) scale(1.02);
+        box-shadow: 0 8px 25px rgba(66, 133, 244, 0.2);
+        animation: none;
     }
     
     .stFileUploader label {
-        background: #4f46e5 !important;
+        background: linear-gradient(135deg, #4285f4 0%, #667eea 100%) !important;
         color: white !important;
         border: none !important;
-        border-radius: 50px !important;
+        border-radius: 12px !important;
         padding: 0.75rem 2rem !important;
         font-weight: 600 !important;
         font-size: 1rem !important;
         cursor: pointer !important;
         transition: all 0.3s ease !important;
-        box-shadow: 0 4px 15px rgba(79, 70, 229, 0.3) !important;
+        box-shadow: 0 4px 15px rgba(66, 133, 244, 0.3) !important;
+        font-family: 'Inter', sans-serif !important;
+        animation: floatUpDown 4s ease-in-out infinite !important;
     }
     
     .stFileUploader label:hover {
-        background: #4338ca !important;
-        transform: translateY(-2px) !important;
-        box-shadow: 0 6px 20px rgba(79, 70, 229, 0.4) !important;
+        background: linear-gradient(135deg, #3367d6 0%, #5a67d8 100%) !important;
+        transform: translateY(-2px) scale(1.05) !important;
+        box-shadow: 0 6px 20px rgba(66, 133, 244, 0.4) !important;
+        animation: none !important;
     }
     
-    /* Text input styling */
+    /* Enhanced text input styling */
     .stTextInput > div > div > input {
-        background: #f8fafc;
-        border: 2px solid #e2e8f0;
-        border-radius: 50px;
+        background: rgba(255, 255, 255, 0.9);
+        border: 2px solid rgba(200, 185, 165, 0.4);
+        border-radius: 12px;
         padding: 1rem 1.5rem;
         font-size: 1rem;
         transition: all 0.3s ease;
         width: 100%;
+        color: #5d4037;
+        font-family: 'Inter', sans-serif;
+        backdrop-filter: blur(10px);
     }
     
     .stTextInput > div > div > input:focus {
-        border-color: #4f46e5;
-        background: white;
-        box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+        border-color: #4285f4;
+        background: rgba(255, 255, 255, 0.95);
+        box-shadow: 0 0 0 3px rgba(66, 133, 244, 0.1);
         outline: none;
+        transform: scale(1.02);
     }
     
     .stTextInput > div > div > input::placeholder {
-        color: #94a3b8;
+        color: rgba(93, 64, 55, 0.6);
         font-style: italic;
     }
     
-    /* Voice button styling */
-    .stButton[key="voice_input_btn"] > button {
-        background: #4f46e5;
+    /* Enhanced button styling with animations */
+    .stButton > button {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white;
         border: none;
-        border-radius: 50%;
-        width: 50px;
-        height: 50px;
-        font-size: 1.2rem;
-        cursor: pointer;
-        transition: all 0.3s ease;
-        margin-top: 0.5rem;
-    }
-    
-    .stButton[key="voice_input_btn"] > button:hover {
-        background: #4338ca;
-        transform: scale(1.1);
-    }
-    
-    /* Answer button styling */
-    .stButton[key="answer_button"] > button {
-        background: #4f46e5;
-        color: white;
-        border: none;
-        border-radius: 50px;
+        border-radius: 12px;
         padding: 0.75rem 2rem;
         font-weight: 600;
         font-size: 1rem;
         cursor: pointer;
         transition: all 0.3s ease;
-        box-shadow: 0 4px 15px rgba(79, 70, 229, 0.3);
-        width: 100%;
-        margin-top: 1rem;
+        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        font-family: 'Inter', sans-serif;
+        animation: floatUpDown 5s ease-in-out infinite;
     }
     
-    .stButton[key="answer_button"] > button:hover {
-        background: #4338ca;
-        transform: translateY(-2px);
-        box-shadow: 0 6px 20px rgba(79, 70, 229, 0.4);
+    .stButton > button:hover {
+        background: linear-gradient(135deg, #5a67d8 0%, #667eea 100%);
+        transform: translateY(-2px) scale(1.05);
+        box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        animation: none;
     }
     
-    /* Success/Error messages */
+    /* Voice button special styling */
+    .stButton > button[title*="voice"], .stButton > button[title*="Voice"] {
+        background: linear-gradient(135deg, #ff6b6b 0%, #ee5a52 100%);
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        padding: 0;
+        font-size: 1.5rem;
+        animation: pulse 2s ease-in-out infinite;
+    }
+    
+    .stButton > button[title*="voice"]:hover, .stButton > button[title*="Voice"]:hover {
+        background: linear-gradient(135deg, #ee5a52 0%, #e84142 100%);
+        transform: scale(1.1);
+        animation: none;
+    }
+    
+    /* Enhanced messages with animations */
     .stSuccess {
-        background: #10b981;
+        background: linear-gradient(135deg, #48bb78, #38a169);
         color: white;
-        border-radius: 15px;
+        border-radius: 12px;
         padding: 1rem;
         border: none;
         text-align: center;
+        box-shadow: 0 4px 15px rgba(72, 187, 120, 0.3);
+        animation: fadeInUp 0.5s ease-out;
     }
     
     .stError {
-        background: #ef4444;
+        background: linear-gradient(135deg, #f56565, #e53e3e);
         color: white;
-        border-radius: 15px;
+        border-radius: 12px;
         padding: 1rem;
         border: none;
         text-align: center;
+        box-shadow: 0 4px 15px rgba(245, 101, 101, 0.3);
+        animation: fadeInUp 0.5s ease-out;
     }
     
     .stWarning {
-        background: #f59e0b;
+        background: linear-gradient(135deg, #ffb74d, #ffa726);
         color: white;
-        border-radius: 15px;
+        border-radius: 12px;
         padding: 1rem;
         border: none;
         text-align: center;
+        box-shadow: 0 4px 15px rgba(255, 183, 77, 0.3);
+        animation: fadeInUp 0.5s ease-out;
     }
     
-    /* Progress bar */
+    /* Progress bar with gradient animations */
     .stProgress > div > div {
-        background: #4f46e5;
+        background: linear-gradient(90deg, #4285f4, #667eea, #764ba2);
+        background-size: 200% 100%;
         border-radius: 10px;
+        animation: gradientMove 2s ease-in-out infinite;
+    }
+    
+    @keyframes gradientMove {
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
+    }
+    
+    /* Additional animation for fadeInUp */
+    @keyframes fadeInUp {
+        from {
+            opacity: 0;
+            transform: translateY(30px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    /* Expander styling */
+    .streamlit-expanderHeader {
+        background: rgba(255, 255, 255, 0.8);
+        border-radius: 12px;
+        padding: 0.5rem 1rem;
+        border: 1px solid rgba(200, 200, 200, 0.2);
+        transition: all 0.3s ease;
+    }
+    
+    .streamlit-expanderHeader:hover {
+        background: rgba(255, 255, 255, 0.95);
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
     }
     
     /* Remove default margins */
@@ -244,6 +456,62 @@ st.markdown("""
     
     .row-widget.stHorizontal > div:last-child {
         padding-right: 0;
+    }
+    
+    /* Loading and success animations */
+    .stSpinner {
+        animation: spin 1s linear infinite;
+    }
+    
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+    
+    /* Floating particles effect */
+    .floating-particles {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 1;
+        overflow: hidden;
+    }
+    
+    .particle {
+        position: absolute;
+        background: rgba(102, 126, 234, 0.1);
+        border-radius: 50%;
+        animation: float 15s infinite linear;
+    }
+    
+    .particle:nth-child(1) { left: 10%; animation-delay: 0s; width: 10px; height: 10px; }
+    .particle:nth-child(2) { left: 20%; animation-delay: 2s; width: 15px; height: 15px; }
+    .particle:nth-child(3) { left: 30%; animation-delay: 4s; width: 8px; height: 8px; }
+    .particle:nth-child(4) { left: 40%; animation-delay: 6s; width: 12px; height: 12px; }
+    .particle:nth-child(5) { left: 50%; animation-delay: 8s; width: 6px; height: 6px; }
+    .particle:nth-child(6) { left: 60%; animation-delay: 10s; width: 14px; height: 14px; }
+    .particle:nth-child(7) { left: 70%; animation-delay: 12s; width: 9px; height: 9px; }
+    .particle:nth-child(8) { left: 80%; animation-delay: 14s; width: 11px; height: 11px; }
+    .particle:nth-child(9) { left: 90%; animation-delay: 16s; width: 7px; height: 7px; }
+    
+    @keyframes float {
+        0% {
+            transform: translateY(100vh) rotate(0deg);
+            opacity: 0;
+        }
+        10% {
+            opacity: 1;
+        }
+        90% {
+            opacity: 1;
+        }
+        100% {
+            transform: translateY(-100px) rotate(360deg);
+            opacity: 0;
+        }
     }
 </style>""", unsafe_allow_html=True)
     
@@ -289,12 +557,26 @@ def initialize_session_state():
     if 'last_processed_question' not in st.session_state:
         st.session_state.last_processed_question = ""
 
-def create_hero_section():
-    """Create the clean header section like the image"""
+def create_animated_title():
+    """Create an attractive animated title section"""
     st.markdown("""
-    <div class="app-header">
-        <div class="app-title">📚 StudyMate</div>
-        <div class="app-subtitle">Your AI Study Assistant</div>
+    <div class="floating-particles">
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+    </div>
+    
+    <div class="studymate-title">
+        <h1 class="studymate-main-title">
+            <span class="studymate-icon">📚</span>StudyMate
+        </h1>
+        <p class="studymate-subtitle">Your AI-Powered Study Companion</p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -367,26 +649,61 @@ def create_question_input_with_voice():
     """Create question input with integrated voice button like the image"""
     st.markdown('<div class="question-section">', unsafe_allow_html=True)
     
+    # Initialize speech handler
+    if 'speech_handler' not in st.session_state:
+        try:
+            st.session_state.speech_handler = SpeechHandler()
+        except Exception as e:
+            st.error(f"Could not initialize speech recognition: {str(e)}")
+            st.session_state.speech_handler = None
+    
     # Create columns for input and voice button
     col1, col2 = st.columns([5, 1])
     
     with col1:
-        question = st.text_input(
-            "Question",
-            placeholder="Ask your question...",
-            label_visibility="collapsed",
-            key="main_question_input"
-        )
+        # Check if we have voice input to populate the text box
+        voice_text = st.session_state.get('voice_input_text', '')
+        if voice_text:
+            question = st.text_input(
+                "Question",
+                value=voice_text,
+                placeholder="Ask your question...",
+                label_visibility="collapsed",
+                key="main_question_input"
+            )
+            # Clear the voice input after using it
+            st.session_state.voice_input_text = ''
+        else:
+            question = st.text_input(
+                "Question",
+                placeholder="Ask your question...",
+                label_visibility="collapsed",
+                key="main_question_input"
+            )
     
     with col2:
-        if st.button("🎤", help="Voice input (currently disabled)", key="voice_input_btn", disabled=True):
-            st.info("Voice input is currently disabled. Please install the speech-recognition package to enable this feature.")
+        if st.session_state.speech_handler:
+            if st.button("🎤", help="Click to record voice input", key="voice_input_btn"):
+                with st.spinner("🎤 Recording for 5 seconds... Speak now!"):
+                    try:
+                        audio_data = st.session_state.speech_handler.record_audio(5)
+                        if audio_data:
+                            with st.spinner("🔄 Converting speech to text..."):
+                                text = st.session_state.speech_handler.convert_speech_to_text(audio_data)
+                                if text:
+                                    st.session_state.voice_input_text = text
+                                    st.success(f"✅ Voice recognized: {text}")
+                                    st.rerun()
+                    except Exception as e:
+                        st.error(f"Voice input error: {str(e)}")
+        else:
+            st.button("🎤", help="Voice input unavailable", key="voice_input_btn_disabled", disabled=True)
     
     st.markdown('</div>', unsafe_allow_html=True)
     return question
 
 def create_welcome_answer_section():
-    """Create the answer/welcome section like the image"""
+    """Create the answer/welcome section exactly like the image"""
     st.markdown('<div class="answer-section">', unsafe_allow_html=True)
     
     if st.session_state.chat_history:
@@ -400,19 +717,11 @@ def create_welcome_answer_section():
         if latest_response:
             st.markdown(f'<div class="answer-content">{latest_response["content"]}</div>', unsafe_allow_html=True)
         else:
-            st.markdown("""
-            <div class="answer-content">
-                <h3>Welcome</h3>
-                <p>Hello! How can I assist you with your studies today?</p>
-            </div>
-            """, unsafe_allow_html=True)
+            # Empty section when no assistant responses yet
+            st.markdown('<div class="empty-section" style="min-height: 80px;"></div>', unsafe_allow_html=True)
     else:
-        st.markdown("""
-        <div class="answer-content">
-            <h3>Welcome</h3>
-            <p>Hello! How can I assist you with your studies today?</p>
-        </div>
-        """, unsafe_allow_html=True)
+        # Empty section when no chat history
+        st.markdown('<div class="empty-section" style="min-height: 80px;"></div>', unsafe_allow_html=True)
     
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -588,19 +897,17 @@ def create_answer_section():
 def process_query(query: str):
     """Process user query and generate response"""
     if not st.session_state.ai_assistant:
-        st.error("AI Assistant not available. Please check your Google API key.")
+        st.error("AI Assistant not available. Please check your Groq API key.")
         return
     
     with st.spinner("🤔 Thinking..."):
         try:
-            # Get relevant context
-            context = st.session_state.vector_store.get_relevant_context(query)
+            # Get relevant context if vector store is available
+            context = ""
+            if st.session_state.vector_store:
+                context = st.session_state.vector_store.get_relevant_context(query)
             
-            if not context.strip():
-                st.warning("No relevant information found in uploaded documents. Please upload relevant PDFs first.")
-                return
-            
-            # Generate AI response
+            # Generate AI response even without context
             response = st.session_state.ai_assistant.generate_response(
                 query, context, st.session_state.chat_history
             )
@@ -804,7 +1111,7 @@ def create_sidebar():
         
         if 'ai_error' in st.session_state:
             st.error(f"AI Assistant Error: {st.session_state.ai_error}")
-            st.info("Please set your Google API key in the environment variables.")
+            st.info("Please set your Groq API key in the environment variables.")
         
         # Difficulty level
         difficulty = st.selectbox(
@@ -975,6 +1282,9 @@ def main():
     # Initialize session state
     initialize_session_state()
     
+    # Create animated title section
+    create_animated_title()
+    
     # Create the main interface container
     st.markdown('<div class="main-interface">', unsafe_allow_html=True)
     
@@ -983,6 +1293,55 @@ def main():
     
     # Question input with integrated voice button
     question = create_question_input_with_voice()
+    
+    # Advanced Speech Features (expandable section)
+    with st.expander("🎤 Advanced Speech Features", expanded=False):
+        if 'speech_handler' in st.session_state and st.session_state.speech_handler:
+            st.markdown("### 🎙️ Extended Voice Input Options")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown("**⏱️ Custom Recording Duration:**")
+                duration = st.slider("Recording time (seconds)", 3, 15, 5, key="voice_duration")
+                
+                if st.button("🎤 Record with Custom Duration", key="custom_record"):
+                    with st.spinner(f"🎤 Recording for {duration} seconds... Speak now!"):
+                        try:
+                            audio_data = st.session_state.speech_handler.record_audio(duration)
+                            if audio_data:
+                                with st.spinner("🔄 Converting to text..."):
+                                    text = st.session_state.speech_handler.convert_speech_to_text(audio_data)
+                                    if text:
+                                        st.session_state.voice_input_text = text
+                                        st.success(f"✅ Recognized: {text}")
+                                        st.rerun()
+                        except Exception as e:
+                            st.error(f"Recording error: {str(e)}")
+            
+            with col2:
+                st.markdown("**📁 Upload Audio File:**")
+                uploaded_audio = st.file_uploader(
+                    "Choose an audio file",
+                    type=['wav', 'mp3', 'flac', 'm4a', 'ogg'],
+                    key="audio_file_upload"
+                )
+                
+                if uploaded_audio is not None:
+                    st.audio(uploaded_audio, format='audio/wav')
+                    
+                    if st.button("🔄 Convert Audio to Text", key="convert_audio"):
+                        with st.spinner("🔄 Processing audio file..."):
+                            try:
+                                text = st.session_state.speech_handler.process_uploaded_audio(uploaded_audio)
+                                if text:
+                                    st.session_state.voice_input_text = text
+                                    st.success(f"✅ Recognized: {text}")
+                                    st.rerun()
+                            except Exception as e:
+                                st.error(f"Audio processing error: {str(e)}")
+        else:
+            st.warning("⚠️ Speech recognition is not available. Please check your system audio settings.")
     
     # Welcome/Answer section  
     create_welcome_answer_section()
@@ -999,33 +1358,6 @@ def main():
             st.warning("Please enter a question first!")
     
     st.markdown('</div>', unsafe_allow_html=True)
-    
-def create_simple_sidebar():
-    """Create a simple sidebar with essential controls"""
-    with st.sidebar:
-        st.markdown("### 📚 StudyMate")
-        
-        # Show document count
-        doc_count = len(st.session_state.uploaded_documents)
-        st.metric("Documents", doc_count)
-        
-        # Show questions asked
-        questions_count = st.session_state.study_session['questions_asked']
-        st.metric("Questions Asked", questions_count)
-        
-        st.markdown("---")
-        
-        # Clear chat history
-        if st.button("🗑️ Clear History"):
-            st.session_state.chat_history.clear()
-            st.rerun()
-        
-        # Clear all documents
-        if st.button("📂 Clear Documents"):
-            st.session_state.vector_store.clear_index()
-            st.session_state.uploaded_documents.clear()
-            st.success("Documents cleared!")
-            st.rerun()
 
 if __name__ == "__main__":
     main()

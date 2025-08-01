@@ -1,372 +1,142 @@
+import streamlit as st
 import speech_recognition as sr
-import pydub
+import io
 import tempfile
 import os
-import streamlit as st
-from typing import Optional, Dict
+from typing import Optional, Tuple
+import wave
+import threading
 import time
 
 class SpeechHandler:
-    """Handles speech-to-text and text-to-speech functionality"""
+    """Handle speech-to-text conversion for StudyMate"""
     
     def __init__(self):
         self.recognizer = sr.Recognizer()
         self.microphone = None
-        self.microphone_available = False
+        self.is_recording = False
         
-        # Try to initialize microphone - gracefully handle if not available
+        # Try to initialize microphone, but don't fail if not available
         try:
             self.microphone = sr.Microphone()
-            self.microphone_available = True
-        except OSError as e:
-            print(f"Warning: No audio input device available - {str(e)}")
-            print("Voice features will be disabled. Audio file upload will still work.")
-        except Exception as e:
-            print(f"Warning: Could not initialize microphone - {str(e)}")
-        
-        # Configure recognizer settings
-        self.recognizer.energy_threshold = 300
-        self.recognizer.dynamic_energy_threshold = True
-        self.recognizer.pause_threshold = 0.8
-        self.recognizer.operation_timeout = None
-        
-        # Supported audio formats
-        self.supported_formats = ['.wav', '.mp3', '.flac', '.m4a', '.ogg']
-        
-    def calibrate_microphone(self) -> bool:
-        """Calibrate microphone for ambient noise"""
-        if not self.microphone_available:
-            st.error("No microphone available for calibration")
-            return False
-            
-        try:
+            # Adjust for ambient noise
             with self.microphone as source:
-                self.recognizer.adjust_for_ambient_noise(source, duration=1)
-            return True
+                self.recognizer.adjust_for_ambient_noise(source, duration=0.5)
         except Exception as e:
-            st.error(f"Error calibrating microphone: {str(e)}")
-            return False
+            st.warning(f"⚠️ Microphone not available: {str(e)}. File upload will still work.")
+            self.microphone = None
     
     def record_audio(self, duration: int = 5) -> Optional[sr.AudioData]:
         """Record audio from microphone"""
-        if not self.microphone_available:
-            st.error("No microphone available for recording")
+        if not self.microphone:
+            st.error("❌ Microphone not available. Please use file upload instead.")
             return None
             
         try:
             with self.microphone as source:
-                st.info("🎤 Listening... Speak now!")
-                # Adjust for ambient noise
-                self.recognizer.adjust_for_ambient_noise(source, duration=0.5)
-                # Record audio
+                st.info(f"🎤 Recording for {duration} seconds... Speak now!")
                 audio = self.recognizer.listen(source, timeout=duration, phrase_time_limit=duration)
                 return audio
         except sr.WaitTimeoutError:
-            st.warning("⏰ Recording timeout. Please try again.")
+            st.error("⏰ Recording timeout. Please try again.")
             return None
         except Exception as e:
-            st.error(f"Error recording audio: {str(e)}")
+            st.error(f"❌ Recording error: {str(e)}")
             return None
     
-    def listen_for_speech(self, timeout: int = 5) -> str:
-        """Listen for speech input and return transcribed text"""
-        if not self.microphone_available:
-            st.error("No microphone available for voice input")
-            return ""
-            
-        try:
-            with self.microphone as source:
-                st.info("🎤 Listening... Speak now!")
-                # Listen for audio with timeout
-                audio = self.recognizer.listen(source, timeout=timeout, phrase_time_limit=10)
-                
-            # Clear the listening message
-            st.success("✅ Audio captured! Processing...")
-            
-            # Recognize speech using Google's API
-            text = self.recognizer.recognize_google(audio)
-            return text
-            
-        except sr.WaitTimeoutError:
-            st.warning("⏰ No speech detected. Please try again.")
-            return ""
-        except sr.UnknownValueError:
-            st.warning("🤔 Could not understand the audio. Please try again.")
-            return ""
-        except sr.RequestError as e:
-            st.error(f"❌ Speech recognition service error: {e}")
-            return ""
-        except Exception as e:
-            st.error(f"❌ Error during speech recognition: {str(e)}")
-            return ""
-    
-    def convert_audio_file(self, audio_file_path: str) -> str:
-        """Convert audio file to WAV format for processing"""
-        try:
-            # Get file extension
-            file_ext = os.path.splitext(audio_file_path)[1].lower()
-            
-            if file_ext == '.wav':
-                return audio_file_path
-            
-            # Convert to WAV using pydub
-            if file_ext == '.mp3':
-                audio = pydub.AudioSegment.from_mp3(audio_file_path)
-            elif file_ext == '.flac':
-                audio = pydub.AudioSegment.from_file(audio_file_path, "flac")
-            elif file_ext == '.m4a':
-                audio = pydub.AudioSegment.from_file(audio_file_path, "m4a")
-            elif file_ext == '.ogg':
-                audio = pydub.AudioSegment.from_ogg(audio_file_path)
-            else:
-                raise ValueError(f"Unsupported audio format: {file_ext}")
-            
-            # Create temporary WAV file
-            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as temp_file:
-                audio.export(temp_file.name, format="wav")
-                return temp_file.name
-                
-        except Exception as e:
-            st.error(f"Error converting audio file: {str(e)}")
+    def convert_speech_to_text(self, audio_data: sr.AudioData) -> Optional[str]:
+        """Convert audio data to text using Google Speech Recognition"""
+        if not audio_data:
             return None
-    
-    def transcribe_audio(self, audio_data: sr.AudioData = None, audio_file_path: str = None) -> Dict:
-        """Transcribe audio to text using multiple recognition services"""
-        if audio_data is None and audio_file_path is None:
-            return {"success": False, "error": "No audio data provided"}
-        
-        # If audio file is provided, load it
-        if audio_file_path:
-            try:
-                # Convert to WAV if necessary
-                wav_path = self.convert_audio_file(audio_file_path)
-                if not wav_path:
-                    return {"success": False, "error": "Failed to convert audio file"}
-                
-                with sr.AudioFile(wav_path) as source:
-                    audio_data = self.recognizer.record(source)
-                
-                # Clean up temporary file if created
-                if wav_path != audio_file_path and os.path.exists(wav_path):
-                    os.unlink(wav_path)
-                    
-            except Exception as e:
-                return {"success": False, "error": f"Error loading audio file: {str(e)}"}
-        
-        # Try multiple recognition services
-        results = {}
-        
-        # Google Speech Recognition (free)
+            
         try:
+            # Try Google Speech Recognition first (free)
             text = self.recognizer.recognize_google(audio_data)
-            results['google'] = {
-                'text': text,
-                'confidence': 0.9,  # Google doesn't provide confidence scores for free tier
-                'success': True
-            }
+            return text
         except sr.UnknownValueError:
-            results['google'] = {
-                'text': '',
-                'confidence': 0.0,
-                'success': False,
-                'error': 'Could not understand audio'
-            }
+            st.error("🔇 Could not understand the audio. Please speak clearly and try again.")
+            return None
         except sr.RequestError as e:
-            results['google'] = {
-                'text': '',
-                'confidence': 0.0,
-                'success': False,
-                'error': f'API request failed: {str(e)}'
-            }
-        
-        # Sphinx (offline recognition as fallback)
-        try:
-            text = self.recognizer.recognize_sphinx(audio_data)
-            results['sphinx'] = {
-                'text': text,
-                'confidence': 0.7,  # Sphinx typically has lower accuracy
-                'success': True
-            }
-        except sr.UnknownValueError:
-            results['sphinx'] = {
-                'text': '',
-                'confidence': 0.0,
-                'success': False,
-                'error': 'Could not understand audio'
-            }
-        except Exception as e:
-            results['sphinx'] = {
-                'text': '',
-                'confidence': 0.0,
-                'success': False,
-                'error': f'Sphinx recognition failed: {str(e)}'
-            }
-        
-        # Determine best result
-        best_result = None
-        highest_confidence = 0
-        
-        for service, result in results.items():
-            if result['success'] and result['confidence'] > highest_confidence:
-                best_result = result
-                best_result['service'] = service
-                highest_confidence = result['confidence']
-        
-        if best_result:
-            return {
-                'success': True,
-                'text': best_result['text'],
-                'confidence': best_result['confidence'],
-                'service': best_result['service'],
-                'all_results': results
-            }
-        else:
-            return {
-                'success': False,
-                'error': 'All recognition services failed',
-                'all_results': results
-            }
+            st.error(f"❌ Speech recognition service error: {str(e)}")
+            return None
     
-    def process_uploaded_audio(self, uploaded_file) -> Dict:
-        """Process uploaded audio file"""
+    def process_uploaded_audio(self, uploaded_file) -> Optional[str]:
+        """Process uploaded audio file and convert to text"""
         try:
             # Save uploaded file temporarily
-            with tempfile.NamedTemporaryFile(delete=False, suffix=uploaded_file.name) as temp_file:
-                temp_file.write(uploaded_file.read())
-                temp_file_path = temp_file.name
+            file_extension = uploaded_file.name.split('.')[-1].lower()
+            with tempfile.NamedTemporaryFile(delete=False, suffix=f".{file_extension}") as tmp_file:
+                tmp_file.write(uploaded_file.getvalue())
+                tmp_file_path = tmp_file.name
             
-            # Transcribe the audio
-            result = self.transcribe_audio(audio_file_path=temp_file_path)
+            # Load audio file
+            with sr.AudioFile(tmp_file_path) as source:
+                audio = self.recognizer.record(source)
             
             # Clean up temporary file
-            os.unlink(temp_file_path)
+            os.unlink(tmp_file_path)
             
-            return result
-            
-        except Exception as e:
-            return {
-                'success': False,
-                'error': f'Error processing uploaded audio: {str(e)}'
-            }
-    
-    def get_microphone_info(self) -> Dict:
-        """Get information about available microphones"""
-        if not self.microphone_available:
-            return {
-                'success': False,
-                'error': 'No microphones available',
-                'microphones': [],
-                'default_index': None
-            }
-            
-        try:
-            microphones = []
-            for index, name in enumerate(sr.Microphone.list_microphone_names()):
-                microphones.append({
-                    'index': index,
-                    'name': name
-                })
-            
-            return {
-                'success': True,
-                'microphones': microphones,
-                'default_index': self.microphone.device_index if self.microphone else None
-            }
-        except Exception as e:
-            return {
-                'success': False,
-                'error': f'Error getting microphone info: {str(e)}',
-                'microphones': []
-            }
-    
-    def test_microphone(self) -> Dict:
-        """Test microphone functionality"""
-        if not self.microphone_available:
-            return {
-                'success': False,
-                'error': 'No microphone available for testing'
-            }
-            
-        try:
-            # Calibrate microphone
-            if not self.calibrate_microphone():
-                return {
-                    'success': False,
-                    'error': 'Failed to calibrate microphone'
-                }
-            
-            # Record a short sample
-            st.info("Testing microphone... Say something!")
-            audio = self.record_audio(duration=3)
-            
-            if audio is None:
-                return {
-                    'success': False,
-                    'error': 'Failed to record audio'
-                }
-            
-            # Try to transcribe
-            result = self.transcribe_audio(audio_data=audio)
-            
-            return {
-                'success': True,
-                'test_transcription': result,
-                'message': 'Microphone test completed'
-            }
+            # Convert to text
+            return self.convert_speech_to_text(audio)
             
         except Exception as e:
-            return {
-                'success': False,
-                'error': f'Microphone test failed: {str(e)}'
-            }
+            st.error(f"❌ Error processing audio file: {str(e)}")
+            return None
     
-    def create_voice_interface(self):
-        """Create clean voice interface"""
-        st.markdown("#### 🎤 Voice Input")
+    def create_voice_input_ui(self) -> Optional[str]:
+        """Create the voice input UI components"""
+        st.markdown("### 🎤 Voice Input")
         
-        # Show microphone status
-        if not self.microphone_available:
-            st.warning("⚠️ No microphone available. You can upload audio files instead.")
-        
-        # Two columns for record and upload
-        col1, col2 = st.columns(2)
+        col1, col2 = st.columns([1, 1])
         
         with col1:
-            st.markdown("**Record Audio**")
-            if self.microphone_available:
-                if st.button("🎤 Start Recording", type="primary"):
-                    with st.spinner("Recording for 5 seconds..."):
-                        audio = self.record_audio(duration=5)
-                        if audio:
-                            with st.spinner("Converting to text..."):
-                                result = self.transcribe_audio(audio_data=audio)
-                                if result['success']:
-                                    st.success(f"Transcribed: {result['text']}")
-                                    st.session_state['voice_query'] = result['text']
-                                    return result['text']
-                                else:
-                                    st.error("Failed to transcribe audio")
+            st.markdown("**Record from Microphone:**")
+            if self.microphone:
+                duration = st.slider("Recording duration (seconds)", 3, 15, 5)
+                
+                if st.button("🎤 Start Recording", key="record_btn"):
+                    with st.spinner("Recording..."):
+                        audio_data = self.record_audio(duration)
+                        if audio_data:
+                            with st.spinner("Converting speech to text..."):
+                                text = self.convert_speech_to_text(audio_data)
+                                if text:
+                                    st.success(f"✅ Recognized: {text}")
+                                    return text
             else:
-                st.info("Recording disabled - no microphone")
+                st.info("🎤 Microphone not available. Please use file upload.")
         
         with col2:
-            st.markdown("**Upload Audio File**")
+            st.markdown("**Upload Audio File:**")
             uploaded_audio = st.file_uploader(
-                "Choose audio file",
+                "Choose an audio file",
                 type=['wav', 'mp3', 'flac', 'm4a', 'ogg'],
-                label_visibility="collapsed"
+                key="audio_upload"
             )
             
-            if uploaded_audio:
-                st.audio(uploaded_audio)
-                if st.button("📝 Transcribe", type="primary"):
-                    with st.spinner("Processing..."):
-                        result = self.process_uploaded_audio(uploaded_audio)
-                        if result['success']:
-                            st.success(f"Transcribed: {result['text']}")
-                            st.session_state['voice_query'] = result['text']
-                            return result['text']
-                        else:
-                            st.error("Failed to transcribe audio")
+            if uploaded_audio is not None:
+                st.audio(uploaded_audio, format='audio/wav')
+                
+                if st.button("🔄 Convert to Text", key="convert_btn"):
+                    with st.spinner("Processing audio file..."):
+                        text = self.process_uploaded_audio(uploaded_audio)
+                        if text:
+                            st.success(f"✅ Recognized: {text}")
+                            return text
         
-        return st.session_state.get('voice_query', "")
+        return None
+    
+    def create_compact_voice_input(self) -> Optional[str]:
+        """Create a compact voice input button for the main interface"""
+        if self.microphone:
+            if st.button("🎤", help="Click to record voice input", key="voice_input_compact"):
+                with st.spinner("Recording for 5 seconds..."):
+                    audio_data = self.record_audio(5)
+                    if audio_data:
+                        with st.spinner("Converting speech to text..."):
+                            text = self.convert_speech_to_text(audio_data)
+                            if text:
+                                return text
+        else:
+            st.button("🎤", help="Microphone not available - use file upload", key="voice_disabled", disabled=True)
+        return None
