@@ -1,0 +1,35 @@
+# Core dependencies
+streamlit>=1.30.0
+openai>=1.6.0
+python-dotenv>=1.0.0
+
+# PDF processing
+PyPDF2>=3.0.1
+
+# Vector storage and embeddings
+faiss-cpu>=1.7.4
+sentence-transformers>=2.2.2
+numpy>=1.24.0
+pandas>=2.0.0
+
+# LangChain ecosystem
+langchain>=0.1.0
+langchain-openai>=0.0.5
+tiktoken>=0.5.0
+
+# Database
+chromadb>=0.4.20
+
+# UI and visualization
+Pillow>=10.0.0
+plotly>=5.17.0
+streamlit-chat>=0.1.1
+
+# Audio processing
+speech-recognition>=3.10.0
+pydub>=0.25.1
+pyaudio>=0.2.11
+
+# Additional utilities
+requests>=2.31.0
+typing-extensions>=4.8.0
