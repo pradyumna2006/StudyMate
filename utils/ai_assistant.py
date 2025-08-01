@@ -1,29 +1,30 @@
-import openai
+import google.generativeai as genai
 from typing import List, Dict, Optional
 import os
 from dotenv import load_dotenv
 import tiktoken
-from langchain_openai import ChatOpenAI
-from langchain.schema import HumanMessage, SystemMessage
 
 load_dotenv()
 
 class AIAssistant:
-    """Advanced AI assistant for academic query processing"""
+    """Advanced AI assistant for academic query processing using Google Gemini"""
     
     def __init__(self):
-        self.api_key = os.getenv("OPENAI_API_KEY")
+        self.api_key = os.getenv("GOOGLE_API_KEY")
         if not self.api_key:
-            raise ValueError("OpenAI API key not found. Please set OPENAI_API_KEY in your environment.")
+            raise ValueError("Google API key not found. Please set GOOGLE_API_KEY in your environment.")
         
-        self.llm = ChatOpenAI(
-            model="gpt-4-turbo-preview",
-            temperature=0.1,
-            max_tokens=2000,
-            openai_api_key=self.api_key
-        )
+        # Configure Google Generative AI
+        genai.configure(api_key=self.api_key)
         
-        self.encoding = tiktoken.get_encoding("cl100k_base")
+        # Initialize the Gemini model
+        self.model = genai.GenerativeModel('gemini-1.5-flash')
+        
+        # For token counting (approximate)
+        try:
+            self.encoding = tiktoken.get_encoding("cl100k_base")
+        except:
+            self.encoding = None
         
         self.system_prompt = """You are StudyMate, an advanced AI academic assistant. Your role is to help students understand and learn from their study materials through intelligent question-answering.
 
@@ -43,52 +44,53 @@ Guidelines:
 - Format responses clearly with proper structure"""
 
     def count_tokens(self, text: str) -> int:
-        """Count tokens in text"""
-        return len(self.encoding.encode(text))
+        """Count tokens in text (approximate)"""
+        if self.encoding:
+            return len(self.encoding.encode(text))
+        else:
+            # Fallback: approximate 4 characters per token
+            return len(text) // 4
 
     def generate_response(self, query: str, context: str, conversation_history: List[Dict] = None) -> Dict:
-        """Generate AI response based on query and context"""
+        """Generate AI response based on query and context using Google Gemini"""
         try:
-            # Prepare messages
-            messages = [SystemMessage(content=self.system_prompt)]
-            
-            # Add conversation history if provided
+            # Prepare conversation history
+            history_text = ""
             if conversation_history:
                 for msg in conversation_history[-5:]:  # Keep last 5 messages for context
                     if msg['role'] == 'user':
-                        messages.append(HumanMessage(content=msg['content']))
+                        history_text += f"User: {msg['content']}\n"
                     elif msg['role'] == 'assistant':
-                        messages.append(SystemMessage(content=f"Previous response: {msg['content']}"))
+                        history_text += f"Assistant: {msg['content']}\n"
             
-            # Prepare the main query with context
-            context_prompt = f"""
-Based on the following study material context, please answer the user's question:
+            # Prepare the main prompt with context
+            full_prompt = f"""{self.system_prompt}
 
-CONTEXT:
+CONVERSATION HISTORY:
+{history_text}
+
+STUDY MATERIAL CONTEXT:
 {context}
 
-USER QUESTION: {query}
+CURRENT QUESTION: {query}
 
 Please provide a comprehensive answer that:
 1. Directly addresses the question
 2. Uses information from the provided context
 3. Explains concepts clearly
 4. Suggests related questions if relevant
-5. Maintains academic rigor
-"""
+5. Maintains academic rigor"""
             
-            messages.append(HumanMessage(content=context_prompt))
-            
-            # Generate response
-            response = self.llm.invoke(messages)
+            # Generate response using Gemini
+            response = self.model.generate_content(full_prompt)
             
             # Prepare response data
             response_data = {
-                'answer': response.content,
+                'answer': response.text,
                 'sources_used': self._extract_sources(context),
                 'confidence': self._calculate_confidence(context, query),
-                'follow_up_questions': self._generate_follow_up_questions(query, response.content),
-                'tokens_used': self.count_tokens(context + query + response.content)
+                'follow_up_questions': self._generate_follow_up_questions(query, response.text),
+                'tokens_used': self.count_tokens(context + query + response.text)
             }
             
             return response_data
@@ -131,16 +133,14 @@ Please provide a comprehensive answer that:
     def _generate_follow_up_questions(self, original_query: str, response: str) -> List[str]:
         """Generate relevant follow-up questions"""
         try:
-            follow_up_prompt = f"""
-Based on this question: "{original_query}"
+            follow_up_prompt = f"""Based on this question: "{original_query}"
 And this response: "{response[:500]}..."
 
 Generate 3 relevant follow-up questions that would help the student learn more about this topic. 
-Format as a simple list, one question per line.
-"""
+Format as a simple list, one question per line."""
             
-            follow_up_response = self.llm.invoke([HumanMessage(content=follow_up_prompt)])
-            questions = [q.strip() for q in follow_up_response.content.split('\n') if q.strip() and '?' in q]
+            follow_up_response = self.model.generate_content(follow_up_prompt)
+            questions = [q.strip() for q in follow_up_response.text.split('\n') if q.strip() and '?' in q]
             
             return questions[:3]  # Return max 3 questions
             
@@ -154,11 +154,10 @@ Format as a simple list, one question per line.
     def summarize_document(self, text: str, document_name: str = "Document") -> Dict:
         """Generate a comprehensive summary of a document"""
         try:
-            summary_prompt = f"""
-Please provide a comprehensive summary of the following document: "{document_name}"
+            summary_prompt = f"""Please provide a comprehensive summary of the following document: "{document_name}"
 
 Content:
-{text[:4000]}  # Limit content to avoid token limits
+{text[:4000]}
 
 Please provide:
 1. A brief overview (2-3 sentences)
@@ -167,17 +166,16 @@ Please provide:
 4. Important facts or figures
 5. Potential study questions
 
-Format your response clearly with headers for each section.
-"""
+Format your response clearly with headers for each section."""
             
-            response = self.llm.invoke([HumanMessage(content=summary_prompt)])
+            response = self.model.generate_content(summary_prompt)
             
             return {
-                'summary': response.content,
+                'summary': response.text,
                 'document_name': document_name,
                 'word_count': len(text.split()),
                 'estimated_reading_time': max(1, len(text.split()) // 200),  # ~200 words per minute
-                'tokens_used': self.count_tokens(text + response.content)
+                'tokens_used': self.count_tokens(text + response.text)
             }
             
         except Exception as e:
@@ -193,8 +191,7 @@ Format your response clearly with headers for each section.
     def generate_quiz_questions(self, context: str, num_questions: int = 5) -> List[Dict]:
         """Generate quiz questions based on the content"""
         try:
-            quiz_prompt = f"""
-Based on the following study material, generate {num_questions} multiple choice questions to test understanding:
+            quiz_prompt = f"""Based on the following study material, generate {num_questions} multiple choice questions to test understanding:
 
 Content:
 {context[:3000]}
@@ -211,14 +208,13 @@ Format as JSON with this structure for each question:
     "options": ["A. Option 1", "B. Option 2", "C. Option 3", "D. Option 4"],
     "correct": "A",
     "explanation": "Why this is correct"
-}}
-"""
+}}"""
             
-            response = self.llm.invoke([HumanMessage(content=quiz_prompt)])
+            response = self.model.generate_content(quiz_prompt)
             
             # Try to parse the response as questions
             questions = []
-            lines = response.content.split('\n')
+            lines = response.text.split('\n')
             current_question = {}
             
             for line in lines:
@@ -252,8 +248,7 @@ Format as JSON with this structure for each question:
     def explain_concept(self, concept: str, context: str, difficulty_level: str = "intermediate") -> str:
         """Provide detailed explanation of a specific concept"""
         try:
-            explanation_prompt = f"""
-Please explain the concept "{concept}" based on the provided context.
+            explanation_prompt = f"""Please explain the concept "{concept}" based on the provided context.
 
 Context:
 {context}
@@ -267,11 +262,10 @@ Please provide:
 4. How it relates to other concepts
 5. Real-world applications if relevant
 
-Adjust the explanation complexity for {difficulty_level} level understanding.
-"""
+Adjust the explanation complexity for {difficulty_level} level understanding."""
             
-            response = self.llm.invoke([HumanMessage(content=explanation_prompt)])
-            return response.content
+            response = self.model.generate_content(explanation_prompt)
+            return response.text
             
         except Exception as e:
             return f"I encountered an error while explaining this concept: {str(e)}"

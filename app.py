@@ -14,7 +14,7 @@ from typing import Dict, List
 from utils.pdf_processor import PDFProcessor
 from utils.vector_store import VectorStore
 from utils.ai_assistant import AIAssistant
-from utils.speech_handler import SpeechHandler
+# from utils.speech_handler import SpeechHandler  # Commented out due to missing speech-recognition
 
 # Page configuration
 st.set_page_config(
@@ -24,7 +24,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Custom CSS for clean, modern UI like the image
+# Custom CSS for clean, modern UI exactly like the image
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
@@ -38,8 +38,19 @@ st.markdown("""
     
     /* Main app styling */
     .stApp {
-        background: #f8fafc;
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    
+    /* Main interface container */
+    .main-interface {
+        max-width: 500px;
+        margin: 2rem auto;
+        padding: 2rem;
+        background: white;
+        border-radius: 20px;
+        box-shadow: 0 10px 50px rgba(0,0,0,0.1);
+        backdrop-filter: blur(10px);
     }
     
     /* Container styling */
@@ -49,198 +60,124 @@ st.markdown("""
         margin: 0 auto;
     }
     
-    /* Header section */
-    .app-header {
-        text-align: center;
-        padding: 2rem 0 3rem 0;
-        background: white;
-        border-radius: 20px;
-        margin-bottom: 2rem;
-        box-shadow: 0 2px 20px rgba(0,0,0,0.08);
-    }
-    
-    .app-title {
-        font-size: 2.5rem;
-        font-weight: 700;
-        color: #1a202c;
-        margin-bottom: 0.5rem;
-    }
-    
-    .app-subtitle {
-        font-size: 1.1rem;
-        color: #64748b;
-        font-weight: 400;
-    }
-    
     /* Upload section */
     .upload-section {
-        background: white;
-        border-radius: 20px;
-        padding: 2rem;
-        margin-bottom: 2rem;
-        box-shadow: 0 2px 20px rgba(0,0,0,0.08);
         text-align: center;
-    }
-    
-    .upload-button {
-        background: #4f46e5;
-        color: white;
-        border: none;
-        border-radius: 50px;
-        padding: 1rem 3rem;
-        font-size: 1.1rem;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.3s ease;
-        box-shadow: 0 4px 15px rgba(79, 70, 229, 0.3);
-        margin: 1rem 0;
-    }
-    
-    .upload-button:hover {
-        background: #4338ca;
-        transform: translateY(-2px);
-        box-shadow: 0 6px 20px rgba(79, 70, 229, 0.4);
-    }
-    
-    /* Question input section */
-    .question-section {
-        background: white;
-        border-radius: 20px;
-        padding: 2rem;
         margin-bottom: 2rem;
-        box-shadow: 0 2px 20px rgba(0,0,0,0.08);
     }
     
-    .question-input {
-        background: #f8fafc;
-        border: 2px solid #e2e8f0;
-        border-radius: 50px;
-        padding: 1rem 2rem;
-        width: 100%;
-        font-size: 1rem;
-        outline: none;
-        transition: all 0.3s ease;
-    }
-    
-    .question-input:focus {
-        border-color: #4f46e5;
-        background: white;
-        box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
-    }
-    
-    .voice-button {
-        position: absolute;
-        right: 1rem;
-        top: 50%;
-        transform: translateY(-50%);
-        background: #4f46e5;
-        color: white;
-        border: none;
-        border-radius: 50%;
-        width: 40px;
-        height: 40px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        transition: all 0.3s ease;
-    }
-    
-    .voice-button:hover {
-        background: #4338ca;
-        transform: translateY(-50%) scale(1.1);
+    /* Question section */
+    .question-section {
+        margin-bottom: 2rem;
+        position: relative;
     }
     
     /* Answer section */
     .answer-section {
-        background: white;
-        border-radius: 20px;
+        background: #f8fafc;
+        border-radius: 15px;
         padding: 2rem;
         margin-bottom: 2rem;
-        box-shadow: 0 2px 20px rgba(0,0,0,0.08);
-        min-height: 200px;
+        text-align: center;
+        min-height: 120px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
     }
     
-    .answer-title {
+    .answer-content h3 {
+        color: #1a202c;
         font-size: 1.5rem;
         font-weight: 600;
-        color: #1a202c;
-        margin-bottom: 1rem;
-        text-align: center;
+        margin-bottom: 0.5rem;
     }
     
-    .answer-content {
+    .answer-content p {
+        color: #64748b;
         font-size: 1rem;
-        color: #4a5568;
         line-height: 1.6;
-        text-align: center;
-        padding: 2rem 0;
+        margin: 0;
     }
     
-    /* File display */
-    .file-display {
-        background: #f8fafc;
-        border: 1px solid #e2e8f0;
+    /* File uploader styling */
+    .stFileUploader > div {
+        border: 2px dashed #4f46e5;
         border-radius: 15px;
-        padding: 1rem;
-        margin: 1rem 0;
-        display: flex;
-        align-items: center;
-        gap: 1rem;
+        background: rgba(79, 70, 229, 0.05);
+        padding: 1.5rem;
+        text-align: center;
+        transition: all 0.3s ease;
     }
     
-    .file-icon {
-        width: 40px;
-        height: 40px;
-        background: #4f46e5;
-        border-radius: 10px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: white;
-        font-size: 1.2rem;
+    .stFileUploader > div:hover {
+        border-color: #4338ca;
+        background: rgba(79, 70, 229, 0.1);
+        transform: translateY(-2px);
     }
     
-    .file-info {
-        flex: 1;
+    .stFileUploader label {
+        background: #4f46e5 !important;
+        color: white !important;
+        border: none !important;
+        border-radius: 50px !important;
+        padding: 0.75rem 2rem !important;
+        font-weight: 600 !important;
+        font-size: 1rem !important;
+        cursor: pointer !important;
+        transition: all 0.3s ease !important;
+        box-shadow: 0 4px 15px rgba(79, 70, 229, 0.3) !important;
     }
     
-    .file-name {
-        font-weight: 600;
-        color: #1a202c;
-        margin-bottom: 0.25rem;
+    .stFileUploader label:hover {
+        background: #4338ca !important;
+        transform: translateY(-2px) !important;
+        box-shadow: 0 6px 20px rgba(79, 70, 229, 0.4) !important;
     }
     
-    .file-status {
-        font-size: 0.9rem;
-        color: #10b981;
-    }
-    
-    /* Chat messages */
-    .user-message {
-        background: #4f46e5;
-        color: white;
-        padding: 1rem 1.5rem;
-        border-radius: 20px 20px 5px 20px;
-        margin: 1rem 0 1rem 2rem;
-        max-width: 80%;
-        margin-left: auto;
-        box-shadow: 0 2px 10px rgba(79, 70, 229, 0.3);
-    }
-    
-    .assistant-message {
+    /* Text input styling */
+    .stTextInput > div > div > input {
         background: #f8fafc;
-        color: #1a202c;
+        border: 2px solid #e2e8f0;
+        border-radius: 50px;
         padding: 1rem 1.5rem;
-        border-radius: 20px 20px 20px 5px;
-        margin: 1rem 2rem 1rem 0;
-        max-width: 80%;
-        border: 1px solid #e2e8f0;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        font-size: 1rem;
+        transition: all 0.3s ease;
+        width: 100%;
     }
     
-    /* Buttons */
-    .stButton > button {
+    .stTextInput > div > div > input:focus {
+        border-color: #4f46e5;
+        background: white;
+        box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+        outline: none;
+    }
+    
+    .stTextInput > div > div > input::placeholder {
+        color: #94a3b8;
+        font-style: italic;
+    }
+    
+    /* Voice button styling */
+    .stButton[key="voice_input_btn"] > button {
+        background: #4f46e5;
+        color: white;
+        border: none;
+        border-radius: 50%;
+        width: 50px;
+        height: 50px;
+        font-size: 1.2rem;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        margin-top: 0.5rem;
+    }
+    
+    .stButton[key="voice_input_btn"] > button:hover {
+        background: #4338ca;
+        transform: scale(1.1);
+    }
+    
+    /* Answer button styling */
+    .stButton[key="answer_button"] > button {
         background: #4f46e5;
         color: white;
         border: none;
@@ -252,56 +189,13 @@ st.markdown("""
         transition: all 0.3s ease;
         box-shadow: 0 4px 15px rgba(79, 70, 229, 0.3);
         width: 100%;
+        margin-top: 1rem;
     }
     
-    .stButton > button:hover {
+    .stButton[key="answer_button"] > button:hover {
         background: #4338ca;
         transform: translateY(-2px);
         box-shadow: 0 6px 20px rgba(79, 70, 229, 0.4);
-    }
-    
-    /* Text input styling */
-    .stTextInput > div > div > input,
-    .stTextArea > div > div > textarea {
-        background: #f8fafc;
-        border: 2px solid #e2e8f0;
-        border-radius: 15px;
-        padding: 1rem;
-        font-size: 1rem;
-        transition: all 0.3s ease;
-    }
-    
-    .stTextInput > div > div > input:focus,
-    .stTextArea > div > div > textarea:focus {
-        border-color: #4f46e5;
-        background: white;
-        box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
-    }
-    
-    /* File uploader */
-    .stFileUploader > div {
-        border: 2px dashed #cbd5e0;
-        border-radius: 15px;
-        background: #f8fafc;
-        padding: 2rem;
-        text-align: center;
-        transition: all 0.3s ease;
-    }
-    
-    .stFileUploader > div:hover {
-        border-color: #4f46e5;
-        background: rgba(79, 70, 229, 0.05);
-    }
-    
-    /* Sidebar */
-    .css-1d391kg {
-        background: white;
-        border-right: 1px solid #e2e8f0;
-    }
-    
-    /* Remove default margins */
-    .stMarkdown {
-        margin-bottom: 0;
     }
     
     /* Success/Error messages */
@@ -311,6 +205,7 @@ st.markdown("""
         border-radius: 15px;
         padding: 1rem;
         border: none;
+        text-align: center;
     }
     
     .stError {
@@ -319,6 +214,7 @@ st.markdown("""
         border-radius: 15px;
         padding: 1rem;
         border: none;
+        text-align: center;
     }
     
     .stWarning {
@@ -327,56 +223,30 @@ st.markdown("""
         border-radius: 15px;
         padding: 1rem;
         border: none;
+        text-align: center;
     }
     
-    .stInfo {
-        background: #3b82f6;
-        color: white;
-        border-radius: 15px;
-        padding: 1rem;
-        border: none;
+    /* Progress bar */
+    .stProgress > div > div {
+        background: #4f46e5;
+        border-radius: 10px;
+    }
+    
+    /* Remove default margins */
+    .stMarkdown {
+        margin-bottom: 0;
+    }
+    
+    /* Column gap adjustment */
+    .row-widget.stHorizontal > div {
+        padding-right: 0.5rem;
+    }
+    
+    .row-widget.stHorizontal > div:last-child {
+        padding-right: 0;
     }
 </style>""", unsafe_allow_html=True)
-
-# JavaScript for enhanced interactivity
-st.markdown("""
-<script>
-// Auto-scroll chat to bottom
-function scrollChatToBottom() {
-    const chatContainer = document.querySelector('.chat-container');
-    if (chatContainer) {
-        chatContainer.scrollTop = chatContainer.scrollHeight;
-    }
-}
-
-// Enhanced drag and drop functionality
-function setupDragAndDrop() {
-    const uploadArea = document.querySelector('.upload-area');
-    if (uploadArea) {
-        uploadArea.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            uploadArea.style.borderColor = '#764ba2';
-            uploadArea.style.backgroundColor = 'rgba(118, 75, 162, 0.1)';
-            uploadArea.style.transform = 'scale(1.02)';
-        });
-        
-        uploadArea.addEventListener('dragleave', (e) => {
-            e.preventDefault();
-            uploadArea.style.borderColor = '#667eea';
-            uploadArea.style.backgroundColor = 'rgba(102, 126, 234, 0.05)';
-            uploadArea.style.transform = 'scale(1)';
-        });
-    }
-}
-
-// Initialize enhancements
-document.addEventListener('DOMContentLoaded', function() {
-    setupDragAndDrop();
-    setInterval(scrollChatToBottom, 1000);
-});
-</script>
-""", unsafe_allow_html=True)
-
+    
 # Initialize session state
 def initialize_session_state():
     """Initialize all session state variables"""
@@ -394,7 +264,7 @@ def initialize_session_state():
             st.session_state.ai_error = str(e)
     
     if 'speech_handler' not in st.session_state:
-        st.session_state.speech_handler = SpeechHandler()
+        st.session_state.speech_handler = None  # Disabled due to missing speech-recognition package
     
     if 'chat_history' not in st.session_state:
         st.session_state.chat_history = []
@@ -427,6 +297,124 @@ def create_hero_section():
         <div class="app-subtitle">Your AI Study Assistant</div>
     </div>
     """, unsafe_allow_html=True)
+
+def create_upload_section():
+    """Create the upload file button section like the image"""
+    st.markdown("""
+    <div class="upload-section">
+        <div style="margin-bottom: 1rem;">
+    """, unsafe_allow_html=True)
+    
+    # File upload with custom styling
+    uploaded_files = st.file_uploader(
+        "📎 Upload File",
+        type=['pdf'],
+        accept_multiple_files=True,
+        help="Upload PDF documents to ask questions about",
+        label_visibility="collapsed"
+    )
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Process uploaded files
+    if uploaded_files:
+        progress_bar = st.progress(0)
+        total_files = len(uploaded_files)
+        
+        for i, uploaded_file in enumerate(uploaded_files):
+            if uploaded_file not in st.session_state.uploaded_documents:
+                progress_bar.progress((i + 1) / total_files)
+                
+                with st.spinner(f"📖 Processing {uploaded_file.name}..."):
+                    try:
+                        # Save uploaded file temporarily
+                        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
+                            tmp_file.write(uploaded_file.read())
+                            tmp_file_path = tmp_file.name
+                        
+                        # Extract text
+                        text = st.session_state.pdf_processor.extract_text_from_pdf(tmp_file_path)
+                        
+                        if not text.strip():
+                            st.warning(f"⚠️ No text found in {uploaded_file.name}. Please check if it's a text-based PDF.")
+                            continue
+                        
+                        # Create documents for vector store
+                        documents = st.session_state.pdf_processor.create_documents(
+                            text, uploaded_file.name
+                        )
+                        
+                        # Add to vector store
+                        st.session_state.vector_store.add_documents(documents, uploaded_file.name)
+                        
+                        # Clean up
+                        os.unlink(tmp_file_path)
+                        
+                        # Track upload
+                        st.session_state.uploaded_documents.append(uploaded_file)
+                        st.session_state.study_session['documents_processed'] += 1
+                        
+                        st.success(f"✅ {uploaded_file.name} added to your library!")
+                        
+                    except Exception as e:
+                        st.error(f"❌ Error processing {uploaded_file.name}: {str(e)}")
+        
+        progress_bar.empty()
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+
+def create_question_input_with_voice():
+    """Create question input with integrated voice button like the image"""
+    st.markdown('<div class="question-section">', unsafe_allow_html=True)
+    
+    # Create columns for input and voice button
+    col1, col2 = st.columns([5, 1])
+    
+    with col1:
+        question = st.text_input(
+            "Question",
+            placeholder="Ask your question...",
+            label_visibility="collapsed",
+            key="main_question_input"
+        )
+    
+    with col2:
+        if st.button("🎤", help="Voice input (currently disabled)", key="voice_input_btn", disabled=True):
+            st.info("Voice input is currently disabled. Please install the speech-recognition package to enable this feature.")
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+    return question
+
+def create_welcome_answer_section():
+    """Create the answer/welcome section like the image"""
+    st.markdown('<div class="answer-section">', unsafe_allow_html=True)
+    
+    if st.session_state.chat_history:
+        # Show the most recent answer
+        latest_response = None
+        for msg in reversed(st.session_state.chat_history):
+            if msg['role'] == 'assistant':
+                latest_response = msg
+                break
+        
+        if latest_response:
+            st.markdown(f'<div class="answer-content">{latest_response["content"]}</div>', unsafe_allow_html=True)
+        else:
+            st.markdown("""
+            <div class="answer-content">
+                <h3>Welcome</h3>
+                <p>Hello! How can I assist you with your studies today?</p>
+            </div>
+            """, unsafe_allow_html=True)
+    else:
+        st.markdown("""
+        <div class="answer-content">
+            <h3>Welcome</h3>
+            <p>Hello! How can I assist you with your studies today?</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown('</div>', unsafe_allow_html=True)
 
 def create_stats_dashboard():
     """Create the statistics dashboard"""
@@ -600,7 +588,7 @@ def create_answer_section():
 def process_query(query: str):
     """Process user query and generate response"""
     if not st.session_state.ai_assistant:
-        st.error("AI Assistant not available. Please check your OpenAI API key.")
+        st.error("AI Assistant not available. Please check your Google API key.")
         return
     
     with st.spinner("🤔 Thinking..."):
@@ -816,7 +804,7 @@ def create_sidebar():
         
         if 'ai_error' in st.session_state:
             st.error(f"AI Assistant Error: {st.session_state.ai_error}")
-            st.info("Please set your OpenAI API key in the environment variables.")
+            st.info("Please set your Google API key in the environment variables.")
         
         # Difficulty level
         difficulty = st.selectbox(
@@ -983,30 +971,34 @@ def show_summary():
     st.markdown('</div>', unsafe_allow_html=True)
 
 def main():
-    """Main application function with clean UI like the image"""
+    """Main application function with clean UI exactly like the image"""
     # Initialize session state
     initialize_session_state()
     
-    # Create clean header
-    create_hero_section()
+    # Create the main interface container
+    st.markdown('<div class="main-interface">', unsafe_allow_html=True)
     
-    # Document upload section
-    create_document_manager()
+    # Upload File Button (prominent at top)
+    create_upload_section()
     
-    # Question input
-    question = create_question_input()
+    # Question input with integrated voice button
+    question = create_question_input_with_voice()
     
-    # Auto-process question when entered (similar to the image)
-    if question and question.strip() and question != st.session_state.get('last_processed_question', ''):
-        if st.session_state.uploaded_documents:
-            process_query(question)
-            st.session_state['last_processed_question'] = question
-            st.rerun()
+    # Welcome/Answer section  
+    create_welcome_answer_section()
+    
+    # Answer button functionality
+    if st.button("Answer", key="answer_button", use_container_width=True):
+        if question and question.strip():
+            if st.session_state.uploaded_documents:
+                process_query(question)
+                st.rerun()
+            else:
+                st.warning("Please upload a document first to get answers!")
         else:
-            st.warning("Please upload a document first!")
+            st.warning("Please enter a question first!")
     
-    # Answer section
-    create_answer_section()
+    st.markdown('</div>', unsafe_allow_html=True)
     
 def create_simple_sidebar():
     """Create a simple sidebar with essential controls"""
