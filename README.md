@@ -21,11 +21,14 @@
 - **Confidence Scoring**: Understand how confident the AI is in its responses
 - **Conversation History**: Track your learning journey with persistent chat history
 
-### 🎤 Voice Integration
-- **Speech-to-Text**: Ask questions using your voice
-- **Multiple Audio Formats**: Support for WAV, MP3, FLAC, M4A, and OGG
-- **Real-time Transcription**: Live audio processing with multiple recognition engines
-- **Audio File Upload**: Upload pre-recorded audio files for transcription
+### 🎤 Speech-to-Text Integration
+- **🎙️ Voice Questions**: Ask questions using your voice instead of typing
+- **🔄 Real-time Processing**: Instant speech-to-text conversion with Google Speech Recognition
+- **📁 Audio File Upload**: Support for WAV, MP3, FLAC, M4A, and OGG formats
+- **⏱️ Flexible Recording**: Adjustable recording duration (3-15 seconds)
+- **🎯 Smart Integration**: Voice input automatically fills the question field
+- **🔊 Audio Playback**: Preview uploaded audio files before conversion
+- **⚡ Multiple Input Methods**: Quick voice button or detailed speech interface
 
 ### 🧠 Advanced Learning Tools
 - **Auto-Generated Quizzes**: Create multiple-choice questions from your documents
@@ -66,18 +69,31 @@ cd StudyMate
 pip install -r requirements.txt
 ```
 
-3. **Set up environment variables**
+3. **Set up speech recognition (Optional for voice features)**
 ```bash
-cp .env.template .env
-# Edit .env file and add your OpenAI API key
+# For Ubuntu/Debian systems:
+sudo apt-get update
+sudo apt-get install portaudio19-dev python3-pyaudio
+
+# For macOS:
+brew install portaudio
+
+# For Windows:
+# PyAudio will be installed automatically with pip
 ```
 
-4. **Run the application**
+4. **Set up environment variables**
+```bash
+cp .env.template .env
+# Edit .env file and add your Groq API key
+```
+
+5. **Run the application**
 ```bash
 streamlit run app.py
 ```
 
-5. **Open your browser**
+6. **Open your browser**
 Navigate to `http://localhost:8501` to start using StudyMate!
 
 ## 🔧 Configuration
