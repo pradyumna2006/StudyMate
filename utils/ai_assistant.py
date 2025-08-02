@@ -18,8 +18,8 @@ class AIAssistant:
         # Initialize the Groq client
         self.client = Groq(api_key=self.api_key)
         
-        # Model configuration
-        self.model = "llama3-8b-8192"  # Fast and efficient model
+        # Model configuration - try different models
+        self.model = "llama3-8b-8192"  # Default Groq model
         
         # Initialize conversation history
         self.conversation_history = []
@@ -100,9 +100,9 @@ CRITICAL: Do not add information not present in the context. Be precise and cite
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
-                max_tokens=700,  # Increased for more detailed responses
-                temperature=0.05,  # Lower temperature for more deterministic, accurate responses
-                top_p=0.9,  # Add top_p for better quality control
+                max_tokens=700,
+                temperature=0.05,
+                top_p=0.9,
             )
             
             answer = response.choices[0].message.content
@@ -277,12 +277,9 @@ Format as simple questions, one per line, focusing on the actual content availab
             
             follow_up_response = self.client.chat.completions.create(
                 model=self.model,
-                messages=[{
-                    "role": "user",
-                    "content": follow_up_prompt
-                }],
+                messages=[{"role": "user", "content": follow_up_prompt}],
                 max_tokens=250,
-                temperature=0.2  # Lower temperature for more focused questions
+                temperature=0.2
             )
             
             questions = [q.strip() for q in follow_up_response.choices[0].message.content.split('\n') 
@@ -418,7 +415,7 @@ Difficulty level: {difficulty_level}
 
 Keep the explanation focused and avoid heavy technical jargon."""
                 }],
-                max_tokens=400,  # Reduced for concise responses
+                max_tokens=400,
                 temperature=0.3
             )
             
