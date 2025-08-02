@@ -1,14 +1,15 @@
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, session
 from flask_cors import CORS
 import os
 from datetime import datetime
 from werkzeug.utils import secure_filename
 from typing import Dict, List
 import logging
+import uuid
 
 # Import custom modules
 from utils.pdf_processor import PDFProcessor
-from utils.vector_store import VectorStore
+from utils.session_vector_store import SessionVectorStore
 from utils.ai_assistant import AIAssistant
 
 # Configure logging
@@ -17,7 +18,8 @@ logger = logging.getLogger(__name__)
 
 # Initialize Flask app
 app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
+app.secret_key = os.urandom(24)  # For session management
+CORS(app, supports_credentials=True)  # Enable CORS with session support
 
 # Configuration
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max file size
@@ -29,45 +31,25 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # Global instances
 pdf_processor = None
-vector_store = None
+session_vector_store = None
 ai_assistant = None
-uploaded_documents = []
-chat_history = []
-study_session = {
-    'start_time': datetime.now(),
-    'questions_asked': 0,
-    'documents_processed': 0,
-    'total_tokens_used': 0
-}
 
 def initialize_components():
     """Initialize all application components"""
-    global pdf_processor, vector_store, ai_assistant, uploaded_documents
+    global pdf_processor, session_vector_store, ai_assistant
     
     try:
         # Initialize PDF processor
         pdf_processor = PDFProcessor()
         logger.info("PDF processor initialized")
         
-        # Initialize vector store
-        vector_store = VectorStore()
-        
-        # Check if there are existing documents in the vector store
-        if hasattr(vector_store, 'documents') and vector_store.documents:
-            existing_count = len(vector_store.documents)
-            logger.info(f"Found {existing_count} existing documents in vector store")
-            
-            # Sample a few documents to see what's in there
-            for i, doc in enumerate(vector_store.documents[:3]):
-                preview = doc[:100] if doc else "Empty"
-                logger.info(f"Sample doc {i}: {preview}...")
-            
-            # Register existing documents
-            uploaded_documents.extend([f"existing_doc_{i}" for i in range(existing_count)])
-            logger.info(f"Registered {len(uploaded_documents)} existing documents")
+        # Initialize session-based vector store
+        session_vector_store = SessionVectorStore()
+        logger.info("Session vector store initialized")
         
         # Initialize AI assistant
         ai_assistant = AIAssistant()
+        logger.info("AI assistant initialized")
         
         logger.info("All components initialized successfully")
         return True
@@ -75,6 +57,15 @@ def initialize_components():
     except Exception as e:
         logger.error(f"Failed to initialize components: {str(e)}")
         return False
+
+def get_or_create_session_id():
+    """Get existing session ID or create a new one"""
+    if 'session_id' not in session:
+        session['session_id'] = session_vector_store.create_session()
+        session['created_at'] = datetime.now().isoformat()
+        logger.info(f"Created new session: {session['session_id'][:8]}...")
+    
+    return session['session_id']
 
 def allowed_file(filename):
     """Check if file extension is allowed"""
@@ -93,7 +84,7 @@ def health_check():
         'timestamp': datetime.now().isoformat(),
         'components': {
             'pdf_processor': pdf_processor is not None,
-            'vector_store': vector_store is not None,
+            'vector_store': session_vector_store is not None,
             'ai_assistant': ai_assistant is not None
         }
     })
@@ -128,15 +119,23 @@ def upload_documents():
                 chunks = pdf_processor.process_pdf(filepath)
                 
                 if chunks:
-                    # Add to vector store
-                    vector_store.add_documents(chunks, filename)
+                    # Get or create session
+                    session_id = get_or_create_session_id()
+                    
+                    # Extract documents and metadata for session store
+                    documents = [chunk['content'] for chunk in chunks]
+                    metadata = [chunk['metadata'] for chunk in chunks]
+                    
+                    # Add to session vector store
+                    session_vector_store.add_documents(session_id, documents, metadata)
                     
                     # Track uploaded document
                     doc_info = {
                         'filename': filename,
                         'filepath': filepath,
                         'upload_time': datetime.now().isoformat(),
-                        'chunks_count': len(chunks)
+                        'chunks_count': len(chunks),
+                        'session_id': session_id
                     }
                     uploaded_documents.append(doc_info)
                     study_session['documents_processed'] += 1
@@ -212,39 +211,45 @@ def ask_question():
         if not question:
             return jsonify({'error': 'Question is required'}), 400
         
-        if not uploaded_documents:
+        # Get session ID
+        session_id = get_or_create_session_id()
+        
+        # Check if session has documents
+        session_stats = session_vector_store.get_session_stats(session_id)
+        if session_stats.get('document_count', 0) == 0:
             return jsonify({'error': 'Please upload documents first'}), 400
         
         if not ai_assistant:
             return jsonify({'error': 'AI assistant not available'}), 500
         
-        # Search for relevant context
+        # Search for relevant context in session
         logger.info(f"Processing question: {question}")
-        relevant_chunks = vector_store.search_similar(question, k=5, threshold=0.1)  # Lower threshold
+        relevant_chunks = session_vector_store.search(session_id, question, k=5)
         logger.info(f"Found {len(relevant_chunks)} relevant chunks")
         
         # Log first chunk for debugging
         if relevant_chunks:
             first_chunk = relevant_chunks[0]
-            logger.info(f"First chunk source: {first_chunk.get('source', 'Unknown')}")
+            logger.info(f"First chunk source: {first_chunk.get('metadata', {}).get('source', 'Unknown')}")
             logger.info(f"First chunk content preview: {first_chunk.get('content', '')[:100]}...")
         else:
             logger.info("No relevant chunks found")
         
         # Create context from relevant chunks
         context = "\n\n".join([
-            f"Source: {chunk.get('source', 'Unknown')}\n{chunk.get('content', '')}"
+            f"Source: {chunk.get('metadata', {}).get('source', 'Unknown')}\n{chunk.get('content', '')}"
             for chunk in relevant_chunks
         ])
         
         logger.info(f"Context length: {len(context)} characters")
         
         # Generate response using AI assistant
-        response = ai_assistant.generate_response(question, context, chat_history)
+        response = ai_assistant.generate_response(question, context)
         
-        # Update session statistics
-        study_session['questions_asked'] += 1
-        study_session['total_tokens_used'] += response.get('tokens_used', 0)
+        # Update session with question count
+        if 'questions_asked' not in session:
+            session['questions_asked'] = 0
+        session['questions_asked'] += 1
         
         # Add to chat history
         chat_entry = {
@@ -275,21 +280,26 @@ def generate_quiz():
         data = request.get_json()
         num_questions = data.get('num_questions', 5)
         
-        if not uploaded_documents:
+        # Get session ID
+        session_id = get_or_create_session_id()
+        
+        # Check if session has documents
+        session_stats = session_vector_store.get_session_stats(session_id)
+        if session_stats.get('document_count', 0) == 0:
             return jsonify({'error': 'Please upload documents first'}), 400
         
         if not ai_assistant:
             return jsonify({'error': 'AI assistant not available'}), 500
         
-        # Get random chunks for quiz generation
-        all_chunks = vector_store.get_all_chunks()
-        if not all_chunks:
+        # Get documents from session for quiz generation
+        all_documents = session_vector_store.get_all_documents(session_id)
+        if not all_documents:
             return jsonify({'error': 'No content available for quiz generation'}), 400
         
-        # Create context from chunks (limit to reasonable size)
-        context_chunks = all_chunks[:10]  # Use first 10 chunks
+        # Create context from documents (limit to reasonable size)
+        context_chunks = all_documents[:10]  # Use first 10 chunks
         context = "\n\n".join([
-            f"Source: {chunk.get('source', 'Unknown')}\n{chunk.get('content', '')}"
+            f"Source: {chunk.get('metadata', {}).get('source', 'Unknown')}\n{chunk.get('content', '')}"
             for chunk in context_chunks
         ])
         
@@ -311,20 +321,25 @@ def generate_quiz():
 def summarize_documents():
     """Generate summary of uploaded documents"""
     try:
-        if not uploaded_documents:
+        # Get session ID
+        session_id = get_or_create_session_id()
+        
+        # Check if session has documents
+        session_stats = session_vector_store.get_session_stats(session_id)
+        if session_stats.get('document_count', 0) == 0:
             return jsonify({'error': 'Please upload documents first'}), 400
         
         if not ai_assistant:
             return jsonify({'error': 'AI assistant not available'}), 500
         
-        # Get all chunks for summarization
-        all_chunks = vector_store.get_all_chunks()
-        if not all_chunks:
+        # Get all documents from session for summarization
+        all_documents = session_vector_store.get_all_documents(session_id)
+        if not all_documents:
             return jsonify({'error': 'No content available for summarization'}), 400
         
-        # Create context from all chunks (limit to reasonable size)
+        # Create context from all documents (limit to reasonable size)
         context = "\n\n".join([
-            chunk.get('content', '') for chunk in all_chunks[:15]  # Use first 15 chunks
+            doc.get('content', '') for doc in all_documents[:15]  # Use first 15 chunks
         ])
         
         # Generate summary
@@ -333,8 +348,8 @@ def summarize_documents():
         
         return jsonify({
             'summary': summary,
-            'documents_count': len(uploaded_documents),
-            'chunks_summarized': min(15, len(all_chunks))
+            'session_stats': session_stats,
+            'chunks_summarized': min(15, len(all_documents))
         })
         
     except Exception as e:
@@ -373,24 +388,26 @@ def clear_session():
         chat_history.clear()
         
         # Clear uploaded documents and files
-        for doc in uploaded_documents:
-            filepath = doc.get('filepath')
-            if filepath and os.path.exists(filepath):
-                os.remove(filepath)
+        # Clear session data
+        if 'session_id' in session:
+            session_id = session['session_id']
+            session_vector_store.clear_session(session_id)
+            logger.info(f"Cleared session: {session_id[:8]}...")
         
-        uploaded_documents.clear()
+        # Clear Flask session
+        session.clear()
         
-        # Clear vector store
-        if vector_store:
-            vector_store.clear_index()
-        
-        # Reset study session
-        study_session = {
-            'start_time': datetime.now(),
-            'questions_asked': 0,
-            'documents_processed': 0,
-            'total_tokens_used': 0
-        }
+        # Clean up uploaded files
+        upload_dir = UPLOAD_FOLDER
+        if os.path.exists(upload_dir):
+            for filename in os.listdir(upload_dir):
+                if filename.lower().endswith('.pdf'):
+                    filepath = os.path.join(upload_dir, filename)
+                    try:
+                        os.remove(filepath)
+                        logger.info(f"Removed uploaded file: {filename}")
+                    except Exception as e:
+                        logger.warning(f"Could not remove file {filename}: {str(e)}")
         
         return jsonify({'message': 'Session cleared successfully'})
         

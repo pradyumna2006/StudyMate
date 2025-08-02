@@ -786,6 +786,74 @@
                 card.style.transform = 'translateY(0) scale(1)';
             });
         });
+
+        // ✨ AUTO-CLEAR SESSION FUNCTIONALITY ✨
+        // Clear session data when browser closes or page refreshes
+        
+        function clearSession() {
+            // Clear session on server
+            fetch(`${API_BASE}/clear-session`, {
+                method: 'POST',
+                keepalive: true, // Ensure request completes even if page is closing
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            }).catch(error => {
+                console.log('Session clear request sent:', error.message);
+            });
+            
+            // Clear local data
+            uploadedFiles = [];
+            localStorage.clear();
+            sessionStorage.clear();
+        }
+
+        // Clear session when page is about to unload (browser close/refresh)
+        window.addEventListener('beforeunload', (event) => {
+            clearSession();
+            // Note: Modern browsers ignore custom messages in beforeunload
+            return '';
+        });
+
+        // Clear session when page visibility changes (tab switch, minimize)
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                // Page is now hidden (user switched tabs, minimized browser, etc.)
+                clearSession();
+            }
+        });
+
+        // Clear session when user navigates away
+        window.addEventListener('pagehide', clearSession);
+
+        // Clear session on page load (ensures fresh start)
+        window.addEventListener('load', () => {
+            clearSession();
+            console.log('🧹 Session cleared - Fresh start!');
+            
+            // Show fresh start message
+            uploadStatus.innerHTML = `<div class="status-message status-success">
+                ✨ Fresh session started! Upload PDFs to begin.
+                <br>📝 System works with ALL PDF types - text, scanned, tables, academic papers!
+                <br>🗑️ Session will auto-clear when you close the browser.
+            </div>`;
+            
+            setTimeout(() => {
+                uploadStatus.innerHTML = '';
+            }, 8000);
+        });
+
+        // Periodically clear session every 30 minutes (safety measure)
+        setInterval(() => {
+            if (uploadedFiles.length === 0) {
+                clearSession();
+                console.log('🧹 Periodic session cleanup performed');
+            }
+        }, 30 * 60 * 1000); // 30 minutes
+
+        console.log('🚀 StudyMate Enhanced with Universal PDF Support & Auto-Session Clearing!');
+        console.log('📚 Supports: Text PDFs, Scanned Documents, Tables, Academic Papers, Technical Manuals');
+        console.log('🗑️ Auto-clears: Browser close, page refresh, tab switch, periodic cleanup');
     </script>
 </body>
 </html>
