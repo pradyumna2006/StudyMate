@@ -1,11 +1,10 @@
-from flask import Flask, request, jsonify, send_from_directory, session
+from flask import Flask, request, jsonify, send_from_directory, session, render_template
 from flask_cors import CORS
 import os
 from datetime import datetime
 from werkzeug.utils import secure_filename
 from typing import Dict, List
 import logging
-import uuid
 
 # Import custom modules
 from utils.pdf_processor import PDFProcessor
@@ -33,10 +32,11 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 pdf_processor = None
 session_vector_store = None
 ai_assistant = None
+chat_history = []  # Global chat history for session tracking
 
 def initialize_components():
     """Initialize all application components"""
-    global pdf_processor, session_vector_store, ai_assistant
+    global pdf_processor, session_vector_store, ai_assistant, chat_history
     
     try:
         # Initialize PDF processor
@@ -74,7 +74,7 @@ def allowed_file(filename):
 @app.route('/')
 def serve_frontend():
     """Serve the main HTML page"""
-    return send_from_directory('.', 'index.html')
+    return render_template('index.html')
 
 @app.route('/health')
 def health_check():

@@ -1,4 +1,3 @@
-import streamlit as st
 import speech_recognition as sr
 import io
 import tempfile
@@ -7,6 +6,7 @@ from typing import Optional, Tuple
 import wave
 import threading
 import time
+import logging
 
 class SpeechHandler:
     """Handle speech-to-text conversion for StudyMate"""
@@ -16,32 +16,36 @@ class SpeechHandler:
         self.microphone = None
         self.is_recording = False
         
+        # Get Google API key from environment
+        self.google_api_key = os.getenv("GOOGLE_API_KEY")
+        
         # Try to initialize microphone, but don't fail if not available
         try:
             self.microphone = sr.Microphone()
             # Adjust for ambient noise
             with self.microphone as source:
                 self.recognizer.adjust_for_ambient_noise(source, duration=0.5)
+            logging.info("Microphone initialized successfully")
         except Exception as e:
-            st.warning(f"⚠️ Microphone not available: {str(e)}. File upload will still work.")
+            logging.warning(f"Microphone not available: {str(e)}. File upload will still work.")
             self.microphone = None
     
     def record_audio(self, duration: int = 5) -> Optional[sr.AudioData]:
         """Record audio from microphone"""
         if not self.microphone:
-            st.error("❌ Microphone not available. Please use file upload instead.")
+            logging.error("Microphone not available. Please use file upload instead.")
             return None
             
         try:
             with self.microphone as source:
-                st.info(f"🎤 Recording for {duration} seconds... Speak now!")
+                logging.info(f"Recording for {duration} seconds...")
                 audio = self.recognizer.listen(source, timeout=duration, phrase_time_limit=duration)
                 return audio
         except sr.WaitTimeoutError:
-            st.error("⏰ Recording timeout. Please try again.")
+            logging.error("Recording timeout. Please try again.")
             return None
         except Exception as e:
-            st.error(f"❌ Recording error: {str(e)}")
+            logging.error(f"Recording error: {str(e)}")
             return None
     
     def convert_speech_to_text(self, audio_data: sr.AudioData) -> Optional[str]:
@@ -50,23 +54,29 @@ class SpeechHandler:
             return None
             
         try:
-            # Try Google Speech Recognition first (free)
-            text = self.recognizer.recognize_google(audio_data)
+            # Use Google Speech Recognition with API key if available for better reliability
+            if self.google_api_key:
+                text = self.recognizer.recognize_google(audio_data, key=self.google_api_key)
+                logging.info("Using enhanced Google Speech API")
+            else:
+                # Fallback to free Google Speech Recognition
+                text = self.recognizer.recognize_google(audio_data)
+                logging.info("Using free Google Speech Recognition")
             return text
         except sr.UnknownValueError:
-            st.error("🔇 Could not understand the audio. Please speak clearly and try again.")
+            logging.error("Could not understand the audio. Please speak clearly and try again.")
             return None
         except sr.RequestError as e:
-            st.error(f"❌ Speech recognition service error: {str(e)}")
+            logging.error(f"Speech recognition service error: {str(e)}")
             return None
     
-    def process_uploaded_audio(self, uploaded_file) -> Optional[str]:
+    def process_uploaded_audio(self, uploaded_file_content: bytes, filename: str) -> Optional[str]:
         """Process uploaded audio file and convert to text"""
         try:
             # Save uploaded file temporarily
-            file_extension = uploaded_file.name.split('.')[-1].lower()
+            file_extension = filename.split('.')[-1].lower()
             with tempfile.NamedTemporaryFile(delete=False, suffix=f".{file_extension}") as tmp_file:
-                tmp_file.write(uploaded_file.getvalue())
+                tmp_file.write(uploaded_file_content)
                 tmp_file_path = tmp_file.name
             
             # Load audio file
@@ -80,63 +90,16 @@ class SpeechHandler:
             return self.convert_speech_to_text(audio)
             
         except Exception as e:
-            st.error(f"❌ Error processing audio file: {str(e)}")
+            logging.error(f"Error processing audio file: {str(e)}")
             return None
     
-    def create_voice_input_ui(self) -> Optional[str]:
-        """Create the voice input UI components"""
-        st.markdown("### 🎤 Voice Input")
-        
-        col1, col2 = st.columns([1, 1])
-        
-        with col1:
-            st.markdown("**Record from Microphone:**")
-            if self.microphone:
-                duration = st.slider("Recording duration (seconds)", 3, 15, 5)
-                
-                if st.button("🎤 Start Recording", key="record_btn"):
-                    with st.spinner("Recording..."):
-                        audio_data = self.record_audio(duration)
-                        if audio_data:
-                            with st.spinner("Converting speech to text..."):
-                                text = self.convert_speech_to_text(audio_data)
-                                if text:
-                                    st.success(f"✅ Recognized: {text}")
-                                    return text
-            else:
-                st.info("🎤 Microphone not available. Please use file upload.")
-        
-        with col2:
-            st.markdown("**Upload Audio File:**")
-            uploaded_audio = st.file_uploader(
-                "Choose an audio file",
-                type=['wav', 'mp3', 'flac', 'm4a', 'ogg'],
-                key="audio_upload"
-            )
-            
-            if uploaded_audio is not None:
-                st.audio(uploaded_audio, format='audio/wav')
-                
-                if st.button("🔄 Convert to Text", key="convert_btn"):
-                    with st.spinner("Processing audio file..."):
-                        text = self.process_uploaded_audio(uploaded_audio)
-                        if text:
-                            st.success(f"✅ Recognized: {text}")
-                            return text
-        
-        return None
+    def is_microphone_available(self) -> bool:
+        """Check if microphone is available"""
+        return self.microphone is not None
     
-    def create_compact_voice_input(self) -> Optional[str]:
-        """Create a compact voice input button for the main interface"""
-        if self.microphone:
-            if st.button("🎤", help="Click to record voice input", key="voice_input_compact"):
-                with st.spinner("Recording for 5 seconds..."):
-                    audio_data = self.record_audio(5)
-                    if audio_data:
-                        with st.spinner("Converting speech to text..."):
-                            text = self.convert_speech_to_text(audio_data)
-                            if text:
-                                return text
-        else:
-            st.button("🎤", help="Microphone not available - use file upload", key="voice_disabled", disabled=True)
+    def record_and_convert(self, duration: int = 5) -> Optional[str]:
+        """Record audio and convert to text in one step"""
+        audio_data = self.record_audio(duration)
+        if audio_data:
+            return self.convert_speech_to_text(audio_data)
         return None

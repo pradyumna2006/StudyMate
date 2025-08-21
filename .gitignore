@@ -18,6 +18,18 @@ var/
 wheels/
 pip-wheel-metadata/
 share/python-wheels/
+
+# Project-specific
+uploads/
+vector_index/
+*.log
+*.tmp
+test_*.py
+demo_*.py
+check_*.py
+comprehensive_*.py
+*_test.py
+*_demo.py
 *.egg-info/
 .installed.cfg
 *.egg

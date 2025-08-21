@@ -1,25 +1,36 @@
-from groq import Groq
 from typing import List, Dict, Optional
 import os
 from dotenv import load_dotenv
 import tiktoken
 from datetime import datetime
+import requests
+import json
 
 load_dotenv()
 
 class AIAssistant:
-    """Advanced AI assistant for academic query processing using Groq"""
+    """Advanced AI assistant for academic query processing using IBM Granite models"""
     
     def __init__(self):
-        self.api_key = os.getenv("GROQ_API_KEY")
-        if not self.api_key:
-            raise ValueError("Groq API key not found. Please set GROQ_API_KEY in your environment.")
+        # IBM Granite configuration (required)
+        self.ibm_api_key = os.getenv("IBM_API_KEY")
+        self.ibm_project_id = os.getenv("IBM_PROJECT_ID")
+        self.hf_token = os.getenv("HF_TOKEN")
         
-        # Initialize the Groq client
-        self.client = Groq(api_key=self.api_key)
+        # Set Hugging Face token for enhanced model access
+        if self.hf_token:
+            os.environ["HUGGINGFACE_HUB_TOKEN"] = self.hf_token
+            print("✅ Hugging Face token configured for enhanced model access")
         
-        # Model configuration - try different models
-        self.model = "llama3-8b-8192"  # Default Groq model
+        # Validate IBM Granite configuration
+        if not self.ibm_api_key or not self.ibm_project_id:
+            raise ValueError("IBM Granite configuration required. Please set IBM_API_KEY and IBM_PROJECT_ID environment variables")
+        
+        # IBM Granite configuration
+        self.ibm_url = "https://us-south.ml.cloud.ibm.com/ml/v1/text/generation?version=2023-05-29"
+        # IBM Granite 13B Instruct v2 - Best for academic tasks
+        self.model = "ibm/granite-13b-instruct-v2"
+        print("✅ Using IBM Granite 13B Instruct v2 for enhanced academic performance")
         
         # Initialize conversation history
         self.conversation_history = []
@@ -61,18 +72,10 @@ FORMAT REQUIREMENTS:
             return len(text) // 4
 
     def generate_response(self, question: str, context: str, chat_history: list = None) -> dict:
-        """Generate highly accurate response using enhanced context analysis"""
+        """Generate highly accurate response using IBM Granite"""
         try:
             # Enhanced context preprocessing
             processed_context = self._preprocess_context(context)
-            
-            # Add conversation history context
-            messages = [{"role": "system", "content": self.system_prompt}]
-            
-            # Add recent conversation history with context awareness
-            for entry in self.conversation_history[-2:]:  # Reduced to most recent for focus
-                messages.append({"role": "user", "content": entry["question"]})
-                messages.append({"role": "assistant", "content": entry["answer"]})
             
             # Enhanced prompt with better context utilization
             current_prompt = f"""CONTEXT FROM STUDY MATERIALS:
@@ -95,17 +98,8 @@ INSTRUCTIONS:
 
 CRITICAL: Do not add information not present in the context. Be precise and cite your sources."""
             
-            messages.append({"role": "user", "content": current_prompt})
-            
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                max_tokens=700,
-                temperature=0.05,
-                top_p=0.9,
-            )
-            
-            answer = response.choices[0].message.content
+            # Use IBM Granite API
+            answer = self._call_ibm_granite(current_prompt)
             
             # Enhanced answer post-processing
             processed_answer = self._post_process_answer(answer, context)
@@ -150,6 +144,56 @@ CRITICAL: Do not add information not present in the context. Be precise and cite
                 'tokens_used': 0,
                 'context_quality': 'error'
             }
+
+    def _call_ibm_granite(self, prompt: str) -> str:
+        """Call IBM Granite API for text generation"""
+        try:
+            import requests
+            
+            # Get access token
+            token_url = "https://iam.cloud.ibm.com/identity/token"
+            token_headers = {"Content-Type": "application/x-www-form-urlencoded"}
+            token_data = {
+                "grant_type": "urn:iam:params:oauth:grant-type:apikey",
+                "apikey": self.ibm_api_key
+            }
+            
+            token_response = requests.post(token_url, headers=token_headers, data=token_data)
+            access_token = token_response.json()["access_token"]
+            
+            # Prepare the request for IBM Granite
+            headers = {
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {access_token}"
+            }
+            
+            # IBM Granite optimized parameters
+            body = {
+                "input": f"{self.system_prompt}\n\nUser: {prompt}\n\nAssistant:",
+                "parameters": {
+                    "decoding_method": "greedy",  # More deterministic for academic accuracy
+                    "max_new_tokens": 700,
+                    "temperature": 0.1,  # Low temperature for academic precision
+                    "top_p": 0.9,
+                    "repetition_penalty": 1.1,
+                    "stop_sequences": ["User:", "Human:"]
+                },
+                "model_id": self.model,
+                "project_id": self.ibm_project_id
+            }
+            
+            response = requests.post(self.ibm_url, headers=headers, data=json.dumps(body))
+            
+            if response.status_code == 200:
+                result = response.json()
+                return result["results"][0]["generated_text"].strip()
+            else:
+                raise Exception(f"IBM API error: {response.status_code} - {response.text}")
+                
+        except Exception as e:
+            print(f"IBM Granite API error: {e}")
+            raise Exception(f"IBM Granite API failed. Error: {str(e)}")
 
     def _preprocess_context(self, context: str) -> str:
         """Preprocess context to improve relevance and structure"""

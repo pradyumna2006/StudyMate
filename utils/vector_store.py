@@ -6,6 +6,9 @@ import pickle
 import os
 import json
 import re
+from dotenv import load_dotenv
+
+load_dotenv()
 
 class VectorStore:
     """Manages vector storage and similarity search for documents"""
@@ -13,8 +16,23 @@ class VectorStore:
     def __init__(self, model_name: str = "all-MiniLM-L6-v2", index_path: str = "vector_index"):
         self.model_name = model_name
         self.index_path = index_path
-        self.embedding_model = SentenceTransformer(model_name)
-        self.dimension = self.embedding_model.get_sentence_embedding_dimension()
+        
+        # Set Hugging Face token if available
+        hf_token = os.getenv("HF_TOKEN")
+        if hf_token:
+            os.environ["HUGGINGFACE_HUB_TOKEN"] = hf_token
+            print("✅ Using Hugging Face token for enhanced model access")
+        
+        try:
+            print(f"🔄 Loading embedding model: {model_name}")
+            self.embedding_model = SentenceTransformer(model_name)
+            self.dimension = self.embedding_model.get_sentence_embedding_dimension()
+            print(f"✅ Embedding model loaded successfully with dimension: {self.dimension}")
+        except Exception as e:
+            print(f"⚠️ Error loading embedding model: {e}")
+            print("🔄 Falling back to simple TF-IDF embeddings...")
+            self.embedding_model = None
+            self.dimension = 512  # Fixed dimension for TF-IDF
         
         # Initialize FAISS index
         self.index = faiss.IndexFlatIP(self.dimension)  # Inner product for cosine similarity
@@ -26,17 +44,42 @@ class VectorStore:
     
     def embed_text(self, text: str) -> np.ndarray:
         """Generate embedding for a single text"""
-        embedding = self.embedding_model.encode([text])
-        # Normalize for cosine similarity
-        faiss.normalize_L2(embedding)
-        return embedding[0]
+        if self.embedding_model:
+            embedding = self.embedding_model.encode([text])
+            # Normalize for cosine similarity
+            faiss.normalize_L2(embedding)
+            return embedding[0]
+        else:
+            # Simple TF-IDF fallback
+            return self._simple_embedding(text)
     
     def embed_texts(self, texts: List[str]) -> np.ndarray:
         """Generate embeddings for multiple texts"""
-        embeddings = self.embedding_model.encode(texts)
-        # Normalize for cosine similarity
-        faiss.normalize_L2(embeddings)
-        return embeddings
+        if self.embedding_model:
+            embeddings = self.embedding_model.encode(texts)
+            # Normalize for cosine similarity
+            faiss.normalize_L2(embeddings)
+            return embeddings
+        else:
+            # Simple TF-IDF fallback
+            embeddings = []
+            for text in texts:
+                embeddings.append(self._simple_embedding(text))
+            return np.array(embeddings)
+    
+    def _simple_embedding(self, text: str) -> np.ndarray:
+        """Simple hash-based embedding as fallback"""
+        words = text.lower().split()
+        # Create a simple feature vector based on word hashes
+        embedding = np.zeros(self.dimension)
+        for i, word in enumerate(words[:50]):  # Use first 50 words
+            word_hash = hash(word) % self.dimension
+            embedding[word_hash] += 1.0
+        # Normalize
+        norm = np.linalg.norm(embedding)
+        if norm > 0:
+            embedding = embedding / norm
+        return embedding
     
     def add_documents(self, documents: List[str], metadata: List[Dict] = None):
         """Add documents to the vector store with enhanced processing"""

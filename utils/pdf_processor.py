@@ -11,16 +11,19 @@ import re
 import os
 import tempfile
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-import nltk
 from collections import Counter
 
-# Download required NLTK data
-try:
-    nltk.data.find('tokenizers/punkt')
-except LookupError:
-    nltk.download('punkt', quiet=True)
+# Skip NLTK for now to avoid scipy dependency conflicts
+# try:
+#     import nltk
+#     nltk.data.find('tokenizers/punkt')
+# except LookupError:
+#     nltk.download('punkt', quiet=True)
 
 class PDFProcessor:
+    def process_pdf_document(self, pdf_path: str) -> list:
+        """Alias for process_pdf for compatibility with tests and API."""
+        return self.process_pdf(pdf_path)
     """Enhanced PDF document processing with intelligent chunking and context preservation"""
     
     def __init__(self, chunk_size: int = 1200, chunk_overlap: int = 300):
@@ -463,6 +466,10 @@ class PDFProcessor:
             
             raise Exception(f"Failed to process PDF '{filename}': {error_msg}")
 
+    def process_pdf_document(self, pdf_path: str) -> List[Dict]:
+        """Legacy method name - alias for process_pdf"""
+        return self.process_pdf(pdf_path)
+
     def get_pdf_info(self, pdf_path: str) -> Dict:
         """Get comprehensive information about a PDF before processing"""
         filename = pdf_path.split('/')[-1]
@@ -666,3 +673,7 @@ class PDFProcessor:
             documents.append(doc)
         
         return documents
+
+    def chunk_text(self, text: str, filename: str = "document") -> List[Dict]:
+        """Legacy method name - alias for create_document_chunks"""
+        return self.create_document_chunks(text, filename)

@@ -2,14 +2,15 @@ import streamlit as st
 import os
 import tempfile
 import json
+import requests
 from datetime import datetime
 import plotly.express as px
 from typing import Dict, List
 
-# Import custom modules
-from utils.pdf_processor import PDFProcessor
-from utils.vector_store import VectorStore
-from utils.ai_assistant import AIAssistant
+# Flask API Configuration
+FLASK_API_URL = "http://127.0.0.1:8001"
+
+# Import only for speech handler (if needed)
 from utils.speech_handler import SpeechHandler
 
 # Page configuration
@@ -517,22 +518,16 @@ st.markdown("""
     
 # Initialize session state
 def initialize_session_state():
-    """Initialize all session state variables"""
-    if 'pdf_processor' not in st.session_state:
-        st.session_state.pdf_processor = PDFProcessor()
-    
-    if 'vector_store' not in st.session_state:
-        st.session_state.vector_store = VectorStore()
-    
-    if 'ai_assistant' not in st.session_state:
-        try:
-            st.session_state.ai_assistant = AIAssistant()
-        except Exception as e:
-            st.session_state.ai_assistant = None
-            st.session_state.ai_error = str(e)
+    """Initialize all session state variables for Flask API integration"""
+    # Flask API connection status
+    if 'flask_api_connected' not in st.session_state:
+        st.session_state.flask_api_connected = check_flask_api_connection()
     
     if 'speech_handler' not in st.session_state:
-        st.session_state.speech_handler = None  # Disabled due to missing speech-recognition package
+        try:
+            st.session_state.speech_handler = SpeechHandler()
+        except Exception as e:
+            st.session_state.speech_handler = None
     
     if 'chat_history' not in st.session_state:
         st.session_state.chat_history = []
@@ -556,6 +551,14 @@ def initialize_session_state():
     
     if 'last_processed_question' not in st.session_state:
         st.session_state.last_processed_question = ""
+
+def check_flask_api_connection():
+    """Check if Flask API is running and accessible"""
+    try:
+        response = requests.get(f"{FLASK_API_URL}/health", timeout=5)
+        return response.status_code == 200
+    except:
+        return False
 
 def create_animated_title():
     """Create an attractive animated title section"""
@@ -581,11 +584,17 @@ def create_animated_title():
     """, unsafe_allow_html=True)
 
 def create_upload_section():
-    """Create the upload file button section like the image"""
+    """Create the upload file button section that communicates with Flask API"""
     st.markdown("""
     <div class="upload-section">
         <div style="margin-bottom: 1rem;">
     """, unsafe_allow_html=True)
+    
+    # Check Flask API connection
+    if not st.session_state.flask_api_connected:
+        st.error("❌ Flask API is not running. Please start the Flask server first.")
+        st.markdown('</div></div>', unsafe_allow_html=True)
+        return
     
     # File upload with custom styling
     uploaded_files = st.file_uploader(
@@ -598,46 +607,34 @@ def create_upload_section():
     
     st.markdown('</div>', unsafe_allow_html=True)
     
-    # Process uploaded files
+    # Process uploaded files via Flask API
     if uploaded_files:
         progress_bar = st.progress(0)
         total_files = len(uploaded_files)
         
         for i, uploaded_file in enumerate(uploaded_files):
-            if uploaded_file not in st.session_state.uploaded_documents:
+            if uploaded_file.name not in st.session_state.uploaded_documents:
                 progress_bar.progress((i + 1) / total_files)
                 
                 with st.spinner(f"📖 Processing {uploaded_file.name}..."):
                     try:
-                        # Save uploaded file temporarily
-                        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
-                            tmp_file.write(uploaded_file.read())
-                            tmp_file_path = tmp_file.name
+                        # Prepare file for Flask API
+                        files = {'files': (uploaded_file.name, uploaded_file.read(), 'application/pdf')}
                         
-                        # Extract text
-                        text = st.session_state.pdf_processor.extract_text_from_pdf(tmp_file_path)
+                        # Send to Flask API
+                        response = requests.post(f"{FLASK_API_URL}/upload-documents", files=files, timeout=120)
                         
-                        if not text.strip():
-                            st.warning(f"⚠️ No text found in {uploaded_file.name}. Please check if it's a text-based PDF.")
-                            continue
+                        if response.status_code == 200:
+                            result = response.json()
+                            st.session_state.uploaded_documents.append(uploaded_file.name)
+                            st.session_state.study_session['documents_processed'] += 1
+                            st.success(f"✅ {uploaded_file.name} processed successfully!")
+                        else:
+                            error_msg = response.json().get('error', 'Unknown error')
+                            st.error(f"❌ Error processing {uploaded_file.name}: {error_msg}")
                         
-                        # Create documents for vector store
-                        documents = st.session_state.pdf_processor.create_documents(
-                            text, uploaded_file.name
-                        )
-                        
-                        # Add to vector store
-                        st.session_state.vector_store.add_documents(documents, uploaded_file.name)
-                        
-                        # Clean up
-                        os.unlink(tmp_file_path)
-                        
-                        # Track upload
-                        st.session_state.uploaded_documents.append(uploaded_file)
-                        st.session_state.study_session['documents_processed'] += 1
-                        
-                        st.success(f"✅ {uploaded_file.name} added to your library!")
-                        
+                    except requests.exceptions.Timeout:
+                        st.error(f"❌ Timeout processing {uploaded_file.name}. File might be too large.")
                     except Exception as e:
                         st.error(f"❌ Error processing {uploaded_file.name}: {str(e)}")
         
@@ -895,54 +892,60 @@ def create_answer_section():
     st.markdown('</div>', unsafe_allow_html=True)
 
 def process_query(query: str):
-    """Process user query and generate response"""
-    if not st.session_state.ai_assistant:
-        st.error("AI Assistant not available. Please check your Groq API key.")
+    """Process user query via Flask API"""
+    if not st.session_state.flask_api_connected:
+        st.error("❌ Flask API is not running. Please start the Flask server first.")
         return
     
     with st.spinner("🤔 Thinking..."):
         try:
-            # Get relevant context if vector store is available
-            context = ""
-            if st.session_state.vector_store:
-                context = st.session_state.vector_store.get_relevant_context(query)
-            
-            # Generate AI response even without context
-            response = st.session_state.ai_assistant.generate_response(
-                query, context, st.session_state.chat_history
+            # Send question to Flask API
+            response = requests.post(
+                f"{FLASK_API_URL}/ask-question",
+                json={"question": query},
+                timeout=60
             )
             
-            # Add to chat history
-            st.session_state.chat_history.append({
-                'role': 'user',
-                'content': query,
-                'timestamp': datetime.now()
-            })
+            if response.status_code == 200:
+                result = response.json()
+                
+                # Add to chat history
+                st.session_state.chat_history.append({
+                    'role': 'user',
+                    'content': query,
+                    'timestamp': datetime.now()
+                })
+                
+                st.session_state.chat_history.append({
+                    'role': 'assistant',
+                    'content': result['answer'],
+                    'timestamp': datetime.now(),
+                    'metadata': {
+                        'sources': result.get('sources_used', []),
+                        'confidence': result.get('confidence', 0),
+                        'follow_up': result.get('follow_up_questions', []),
+                        'tokens': result.get('tokens_used', 0)
+                    }
+                })
+                
+                # Update session statistics
+                st.session_state.study_session['questions_asked'] += 1
+                st.session_state.study_session['total_tokens_used'] += result.get('tokens_used', 0)
+                
+                # Clear current query
+                st.session_state.current_query = ""
+                st.session_state.voice_query = ""
+                
+                st.rerun()
+                
+            else:
+                error_msg = response.json().get('error', 'Unknown error')
+                st.error(f"❌ Error getting answer: {error_msg}")
             
-            st.session_state.chat_history.append({
-                'role': 'assistant',
-                'content': response['answer'],
-                'timestamp': datetime.now(),
-                'metadata': {
-                    'sources': response['sources_used'],
-                    'confidence': response['confidence'],
-                    'follow_up': response['follow_up_questions'],
-                    'tokens': response['tokens_used']
-                }
-            })
-            
-            # Update session statistics
-            st.session_state.study_session['questions_asked'] += 1
-            st.session_state.study_session['total_tokens_used'] += response['tokens_used']
-            
-            # Clear current query
-            st.session_state.current_query = ""
-            st.session_state.voice_query = ""
-            
-            st.rerun()
-            
+        except requests.exceptions.Timeout:
+            st.error("❌ Request timeout. The question might be too complex.")
         except Exception as e:
-            st.error(f"Error processing query: {str(e)}")
+            st.error(f"❌ Error processing query: {str(e)}")
 
 def generate_quiz():
     """Generate quiz questions from uploaded documents"""
@@ -1111,7 +1114,7 @@ def create_sidebar():
         
         if 'ai_error' in st.session_state:
             st.error(f"AI Assistant Error: {st.session_state.ai_error}")
-            st.info("Please set your Groq API key in the environment variables.")
+            st.info("Please set your IBM Granite API key and project ID in the environment variables.")
         
         # Difficulty level
         difficulty = st.selectbox(
@@ -1278,9 +1281,18 @@ def show_summary():
     st.markdown('</div>', unsafe_allow_html=True)
 
 def main():
-    """Main application function with clean UI exactly like the image"""
+    """Main application function with Flask API integration"""
     # Initialize session state
     initialize_session_state()
+    
+    # Show API connection status
+    if st.session_state.flask_api_connected:
+        st.success("✅ Connected to Flask API")
+    else:
+        st.error("❌ Flask API not accessible. Please start the Flask server.")
+        if st.button("🔄 Retry Connection"):
+            st.session_state.flask_api_connected = check_flask_api_connection()
+            st.rerun()
     
     # Create animated title section
     create_animated_title()

@@ -5,6 +5,7 @@ from typing import List, Dict, Any, Optional
 import json
 import re
 import uuid
+import os
 from datetime import datetime, timedelta
 
 class SessionVectorStore:
@@ -12,6 +13,12 @@ class SessionVectorStore:
     
     def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
         self.model_name = model_name
+        
+        # Set Hugging Face token if available
+        hf_token = os.getenv("HF_TOKEN")
+        if hf_token:
+            os.environ["HUGGINGFACE_HUB_TOKEN"] = hf_token
+        
         self.embedding_model = SentenceTransformer(model_name)
         self.dimension = self.embedding_model.get_sentence_embedding_dimension()
         

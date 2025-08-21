@@ -1,8 +1,12 @@
 # Core dependencies
 flask>=2.3.0
 flask-cors>=4.0.0
-groq>=0.30.0
 python-dotenv>=1.0.0
+requests>=2.31.0
+
+# IBM Granite AI models support (Primary AI engine)
+ibm-watson-machine-learning>=1.0.312
+ibm-cloud-sdk-core>=3.16.0
 
 # PDF processing - Multiple libraries for maximum compatibility
 PyPDF2>=3.0.1

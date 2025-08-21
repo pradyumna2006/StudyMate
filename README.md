@@ -4,7 +4,12 @@
 
 [![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://python.org)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.47+-red.svg)](https://streamlit.io)
-[![OpenAI](https://img.shields.io/badge/OpenAI-GPT--4-green.svg)](https://openai.com)
+# 📚 StudyMate - AI-Powered Academic Assistant
+
+[![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://python.org)
+[![Flask](https://img.shields.io/badge/Flask-2.3+-green.svg)](https://flask.palletsprojects.com)
+[![IBM Granite](https://img.shields.io/badge/IBM-Granite%20AI-blue.svg)](https://ibm.com)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ## 🌟 Features
@@ -53,7 +58,8 @@
 
 ### Prerequisites
 - Python 3.8 or higher
-- OpenAI API key
+- IBM Granite API credentials
+- Hugging Face token (for enhanced embeddings)
 - Modern web browser
 
 ### Installation
@@ -85,16 +91,16 @@ brew install portaudio
 4. **Set up environment variables**
 ```bash
 cp .env.template .env
-# Edit .env file and add your Groq API key
+# Edit .env file and add your IBM Granite API credentials
 ```
 
 5. **Run the application**
 ```bash
-streamlit run app.py
+python app_complete.py
 ```
 
 6. **Open your browser**
-Navigate to `http://localhost:8501` to start using StudyMate!
+Navigate to `http://localhost:8001` to start using StudyMate!
 
 ## 🔧 Configuration
 
@@ -103,34 +109,53 @@ Navigate to `http://localhost:8501` to start using StudyMate!
 Create a `.env` file in the root directory with the following variables:
 
 ```env
-# Required
-OPENAI_API_KEY=your_openai_api_key_here
+# IBM Granite Configuration (Primary AI Engine)
+IBM_API_KEY=your_ibm_api_key_here
+IBM_PROJECT_ID=your_ibm_project_id_here
 
-# Optional (with defaults)
-VECTOR_INDEX_PATH=./vector_index
-EMBEDDING_MODEL=all-MiniLM-L6-v2
-CHUNK_SIZE=1000
-CHUNK_OVERLAP=200
-DEFAULT_MODEL=gpt-4-turbo-preview
-MAX_TOKENS=2000
-TEMPERATURE=0.1
+# Google Cloud Configuration (Enhanced Speech Recognition)
+GOOGLE_API_KEY=your_google_api_key_here
+
+# Hugging Face Configuration (Enhanced Embeddings)
+HF_TOKEN=your_hugging_face_token_here
+
+# Application Settings
+FLASK_ENV=development
+FLASK_DEBUG=True
 ```
+
+### API Key Setup
+
+1. **IBM Granite API** (Required for AI responses):
+   - Go to [IBM Cloud](https://cloud.ibm.com/catalog/services/watson-machine-learning)
+   - Create a Watson Machine Learning service
+   - Get your API key and Project ID
+
+2. **Google Cloud API** (Optional for enhanced speech recognition):
+   - Go to [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
+   - Create a new project or select existing one
+   - Enable the Speech-to-Text API
+   - Create credentials (API key)
+
+3. **Hugging Face Token** (Optional for enhanced embeddings):
+   - Go to [Hugging Face](https://huggingface.co/settings/tokens)
+   - Create a new token with read permissions
 
 ## 📁 Project Structure
 
 ```
 StudyMate/
-├── app.py                 # Main Streamlit application
-├── requirements.txt       # Python dependencies
-├── .env.template         # Environment variables template
-├── README.md             # This file
-├── utils/                # Core utilities
-│   ├── pdf_processor.py  # PDF text extraction and processing
-│   ├── vector_store.py   # Vector storage and similarity search
-│   ├── ai_assistant.py   # AI-powered question answering
+├── app_complete.py       # Main Flask application
+├── requirements.txt      # Python dependencies
+├── .env                  # Environment variables (create this)
+├── .env.example         # Environment variables template
+├── README.md            # This file
+├── utils/               # Core utilities
+│   ├── pdf_processor.py # PDF text extraction and processing
+│   ├── vector_store.py  # Vector storage and similarity search
+│   ├── ai_assistant.py  # AI-powered question answering
 │   └── speech_handler.py # Speech-to-text functionality
-├── vector_index/         # Vector storage (auto-created)
-└── assets/              # Static assets (images, etc.)
+└── .gitignore           # Git ignore rules
 ```
 
 ## 🎯 Usage Guide
@@ -175,10 +200,10 @@ StudyMate includes advanced speech recognition capabilities:
 
 ### Common Issues
 
-**1. OpenAI API Key Error**
-- Ensure your API key is correctly set in the `.env` file
-- Check that you have sufficient OpenAI credits
-- Verify the API key format (starts with 'sk-')
+**1. IBM Granite API Configuration Error**
+- Ensure your IBM API key is correctly set in the `.env` file
+- Check that your IBM project ID and space ID are valid
+- Verify you have access to IBM Granite 13B Instruct v2 model
 
 **2. Audio Recognition Issues**
 - Check microphone permissions in your browser
@@ -206,11 +231,11 @@ This project is licensed under the MIT License.
 
 ## 🙏 Acknowledgments
 
-- **Streamlit** - For the amazing web app framework
-- **OpenAI** - For powerful AI capabilities
-- **Hugging Face** - For sentence transformers
+- **IBM Granite** - For the powerful AI language models
+- **Hugging Face** - For the transformer models and embeddings
+- **Google Cloud** - For enhanced speech recognition capabilities
+- **Flask** - For the amazing web framework
 - **FAISS** - For efficient vector similarity search
-- **SpeechRecognition** - For audio processing capabilities
 
 ---
 
