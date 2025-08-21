@@ -25,9 +25,25 @@ class VectorStore:
         
         try:
             print(f"🔄 Loading embedding model: {model_name}")
-            self.embedding_model = SentenceTransformer(model_name)
-            self.dimension = self.embedding_model.get_sentence_embedding_dimension()
-            print(f"✅ Embedding model loaded successfully with dimension: {self.dimension}")
+            # Add timeout for model loading to avoid hanging
+            import signal
+            
+            def timeout_handler(signum, frame):
+                raise TimeoutError("Model loading timed out")
+            
+            # Set timeout for 30 seconds
+            signal.signal(signal.SIGALRM, timeout_handler)
+            signal.alarm(30)
+            
+            try:
+                self.embedding_model = SentenceTransformer(model_name)
+                self.dimension = self.embedding_model.get_sentence_embedding_dimension()
+                signal.alarm(0)  # Cancel timeout
+                print(f"✅ Embedding model loaded successfully with dimension: {self.dimension}")
+            except (TimeoutError, Exception) as model_error:
+                signal.alarm(0)  # Cancel timeout
+                raise model_error
+                
         except Exception as e:
             print(f"⚠️ Error loading embedding model: {e}")
             print("🔄 Falling back to simple TF-IDF embeddings...")
